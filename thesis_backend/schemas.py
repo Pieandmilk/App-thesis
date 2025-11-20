@@ -26,7 +26,7 @@ class LoginResponse(BaseModel):
 class UserProfileForm(BaseModel):
     weight: float
     height: float
-    age: float
+    age: int
     sex: str
     sports_category: str
     goal: str
@@ -34,6 +34,7 @@ class UserProfileForm(BaseModel):
     carbs: int
     protein: int
     fat: int
+    ispro: Optional[bool] = False 
 
 class LogFoodItem(BaseModel):
     food_name: str

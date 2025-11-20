@@ -1,9 +1,12 @@
 export const categoryPAL = {
-  endurance: 2.65,    // 2.4–2.9
-  strength: 2.3,      // 2.0–2.6
-  team: 2.4,          // 2.2–2.6
-  skill: 1.95         // 1.7–2.2
+  endurance: 1.9, 
+  strength: 1.7,  
+  team: 1.8, 
+  skill: 1.6, 
+  combat: 1.8 
 };
+
+export const eliteMultiplier = 1.15;
 
 export function calculateBMR(weight, height, age, sex) {
   if (sex === "male") {
@@ -13,20 +16,21 @@ export function calculateBMR(weight, height, age, sex) {
   }
 }
 
-export function calculateTDEE(bmr, sportCategory) {
-  const pal = categoryPAL[sportCategory];
+export function calculateTDEE(bmr, sportCategory, age, isPro = false) {
+  let pal = categoryPAL[sportCategory] || 1.5;
+  if (isPro) pal *= eliteMultiplier;
   return bmr * pal;
 }
 
 export function adjustCaloriesForGoal(tdee, goal) {
-  if (goal === "weight_loss") return tdee - 500;
+  if (goal === "weight_loss") return tdee - 300;
   if (goal === "muscle_gain") return tdee + 300;
   return tdee;
 }
 
 export function calculateMacros(weight, calories) {
-  const carbs = weight * 5;  
+  const carbs = weight * 5;
   const protein = weight * 1.8;  
-  const fat = (calories * 0.25) / 9;  
+  const fat = (calories * 0.25) / 9; 
   return { carbs, protein, fat };
 }
