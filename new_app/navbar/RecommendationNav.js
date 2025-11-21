@@ -189,7 +189,7 @@ Format using Markdown:
                 />
                 <View style={{ marginLeft: 10 }}>
                     <Text style={styles.toggleTitle}>
-                        {isSportsMode ? "Sports Mode (Professional)" : "General Mode"}
+                        {isSportsMode ? "Sports Mode" : "General Mode"}
                     </Text>
                     <Text style={styles.toggleSubtitle}>
                         {isSportsMode ? "Detailed performance & timing advice" : "Simple & balanced advice"}
