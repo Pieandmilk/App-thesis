@@ -36,6 +36,7 @@ export default function LogNav({ userId, BACKEND_URL }) {
   const [recLoading, setRecLoading] = useState(false);
 
   const MEAL_ORDER = ["Breakfast", "Lunch", "Dinner", "Snacks"];
+  const todayStr = getLocalDateString();
 
   useEffect(() => {
     fetchMeals(selectedDate);
@@ -117,7 +118,6 @@ export default function LogNav({ userId, BACKEND_URL }) {
   };
 
   const handleGenerateRecommendation = async () => {
-    // Flatten all meals for the day into a single food list
     const allMeals = Object.values(groupedMeals).flat();
     const allFoodLogs = [];
 
@@ -140,14 +140,13 @@ export default function LogNav({ userId, BACKEND_URL }) {
     const rec = await generateRecommendation({
       userId,
       BACKEND_URL,
-      dailyMeals: allFoodLogs, // pass all meals of the day
+      dailyMeals: allFoodLogs,
     });
 
     setRecommendation(rec);
     setRecLoading(false);
   };
 
-  const todayStr = getLocalDateString();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = getLocalDateString(yesterday);
@@ -178,13 +177,12 @@ export default function LogNav({ userId, BACKEND_URL }) {
         scrollable
         style={{
           height: 100,
+          minHeight: 100,
           paddingTop: 10,
           paddingBottom: 10,
-          backgroundColor: "#27ae60",
-          borderRadius: 12,
           marginBottom: 20,
         }}
-        calendarColor="#63b686ff"
+        calendarColor="#27ae60"
         calendarHeaderStyle={{ color: "#ffffff", fontSize: 18, fontWeight: "600" }}
         dateNumberStyle={{ color: "#d4f1d4", fontSize: 16 }}
         dateNameStyle={{ color: "#d4f1d4", fontSize: 12 }}
@@ -193,6 +191,9 @@ export default function LogNav({ userId, BACKEND_URL }) {
         highlightDateNumberStyle={{ color: "#ffffff", fontSize: 18, fontWeight: "bold" }}
         highlightDateNameStyle={{ color: "#ffffff", fontSize: 12, fontWeight: "600" }}
         onDateSelected={(date) => setSelectedDate(date.format("YYYY-MM-DD"))}
+        useIsoWeek={false}
+        iconContainer={{ flex: 0.1 }}
+        customDatesStyles={[]}
       />
 
       <Text style={styles.select}>{formatDateTitle(selectedDate)}</Text>
@@ -211,53 +212,55 @@ export default function LogNav({ userId, BACKEND_URL }) {
             <View key={mealType} style={{ marginBottom: 20 }}>
               <Text style={styles.timeHeader}>{mealType}</Text>
               {groupedMeals[mealType].map((meal, idx) => (
-              <TouchableOpacity
-                key={meal.id}
-                style={{
-                  backgroundColor: "#eaf6ea", // soft green
-                  borderRadius: 16,
-                  padding: 15,
-                  marginBottom: 12,
-                  shadowColor: "#000",
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.1,
-                  shadowRadius: 6,
-                  elevation: 3, // for Android shadow
-                }}
-                onPress={() => fetchFoodLogs(meal)}
-                activeOpacity={0.8} // subtle feedback on press
-              >
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-                  <Text style={{ fontSize: 16, fontWeight: "700", color: "#27ae60" }}>
-                    {meal.name || `Meal ${idx + 1}`}
-                  </Text>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#2c3e50" }}>
-                    {meal.total_calories.toFixed(1)} kcal
-                  </Text>
-                </View>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={{ fontSize: 12, color: "#34495e", fontWeight: "500" }}>
-                    Protein: {meal.total_protein.toFixed(1)} g
-                  </Text>
-                  <Text style={{ fontSize: 12, color: "#34495e", fontWeight: "500" }}>
-                    Carbs: {meal.total_carbs.toFixed(1)} g
-                  </Text>
-                  <Text style={{ fontSize: 12, color: "#34495e", fontWeight: "500" }}>
-                    Fats: {meal.total_fat.toFixed(1)} g
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+                <TouchableOpacity
+                  key={meal.id}
+                  style={{
+                    backgroundColor: "#eaf6ea",
+                    borderRadius: 16,
+                    padding: 15,
+                    marginBottom: 12,
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 6,
+                    elevation: 3,
+                  }}
+                  onPress={() => fetchFoodLogs(meal)}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: "#27ae60" }}>
+                      {meal.name || `Meal ${idx + 1}`}
+                    </Text>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#2c3e50" }}>
+                      {meal.total_calories.toFixed(1)} kcal
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ fontSize: 12, color: "#34495e", fontWeight: "500" }}>
+                      Protein: {meal.total_protein.toFixed(1)} g
+                    </Text>
+                    <Text style={{ fontSize: 12, color: "#34495e", fontWeight: "500" }}>
+                      Carbs: {meal.total_carbs.toFixed(1)} g
+                    </Text>
+                    <Text style={{ fontSize: 12, color: "#34495e", fontWeight: "500" }}>
+                      Fats: {meal.total_fat.toFixed(1)} g
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
             </View>
           ))}
 
-          {/* Generate Recommendation for the whole day */}
-          <Pressable
-            style={[styles.closeButton, { backgroundColor: "#27ae60", marginTop: 10 }]}
-            onPress={handleGenerateRecommendation}
-          >
-            <Text style={styles.closeText}>View Recommendation</Text>
-          </Pressable>
+          {/* Generate Recommendation for the whole day (only for today) */}
+          {selectedDate === todayStr && sortedMealTypes.length > 0 && (
+            <Pressable
+              style={[styles.closeButton, { backgroundColor: "#27ae60", marginTop: 10 }]}
+              onPress={handleGenerateRecommendation}
+            >
+              <Text style={styles.closeText}>View Recommendation</Text>
+            </Pressable>
+          )}
         </>
       )}
 

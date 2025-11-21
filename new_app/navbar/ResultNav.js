@@ -150,8 +150,6 @@ export default function ResultNav({ photoUri, userId, BACKEND_URL }) {
     }
   };
 
-  const triggerMealRefresh = () => setMealRefreshCounter(prev => prev + 1);
-
   if (!photoUri) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff", padding: 20 }}>
@@ -170,6 +168,24 @@ export default function ResultNav({ photoUri, userId, BACKEND_URL }) {
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" }}>
         <ActivityIndicator size="large" color="green" />
         <Text style={{ marginTop: 10, color: "green" }}>Processing image</Text>
+      </View>
+    );
+  }
+
+  if (!loading && predictions.length === 0) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff", padding: 20 }}>
+        <View style={styles.section}>
+          <Text style={styles.title}>Captured Image</Text>
+          <Image source={{ uri: photoUri }} style={styles.image} resizeMode="contain" />
+        </View>
+        <Text style={{ fontSize: 20, fontWeight: "bold", color: "#145a32", textAlign: "center", marginBottom: 10 }}>
+          No food image detected
+        </Text>
+        <Text style={{ fontSize: 12, color: "#1a2a20ff", textAlign: "center" }}>
+          Please ensure your image clearly shows the food, avoid blurry shots, include adequate lighting, and try capturing a closer view. 
+          You can also try taking a different angle for better detection.
+        </Text>
       </View>
     );
   }
@@ -295,18 +311,18 @@ export default function ResultNav({ photoUri, userId, BACKEND_URL }) {
                 {["Breakfast","Lunch","Dinner","Snack"].map((type) => (
                   <Pressable
                     key={type}
-                    style={{ backgroundColor:"green", padding:12, borderRadius:8, marginVertical:5, alignItems:"center" }}
+                    style={{ backgroundColor:"#c3fbccff", padding:12, borderRadius:8, marginVertical:5, alignItems:"center", borderWidth: 2, borderColor: "green" }}
                     onPress={() => saveMealWithType(type)}
                   >
-                    <Text style={{ color:"#fff", fontWeight:"bold" }}>{type}</Text>
+                    <Text style={{ color:"green", fontWeight:"bold" }}>{type}</Text>
                   </Pressable>
                 ))}
 
                 <Pressable
-                  style={{ backgroundColor:"#c0392b", padding:12, borderRadius:8, marginTop:10, alignItems:"center" }}
+                  style={{ backgroundColor:"#ffbeb7ff", padding:12, borderRadius:8, marginTop:10, alignItems:"center", borderWidth: 2, borderColor: "red" }}
                   onPress={() => setMealTypeModalVisible(false)}
                 >
-                  <Text style={{ color:"#fff", fontWeight:"bold" }}>Cancel</Text>
+                  <Text style={{ color:"red", fontWeight:"bold" }}>Cancel</Text>
                 </Pressable>
               </View>
             </View>
