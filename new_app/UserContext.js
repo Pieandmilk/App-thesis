@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const BACKEND_URL = "http://192.168.1.15:8000";
+const BACKEND_URL = "http://192.168.0.101:8000";
 
 const UserContext = createContext();
 

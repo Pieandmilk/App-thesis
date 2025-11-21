@@ -37,6 +37,7 @@ def submit_profile(user_id: int, form: UserProfileForm = Body(...)):
             "sex": form.sex,
             "sports_category": form.sports_category,
             "goal": form.goal,
+            "ispro": form.ispro,
             "calories": int(form.calories),    
             "carbs": int(form.carbs),           
             "protein": int(form.protein),        
