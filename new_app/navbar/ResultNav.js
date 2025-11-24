@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import React,{ useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,166 @@ import styles from "../styles/ResultStyles";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../UserContext";
 
+// Constants
+const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner", "Snack"];
+
+// Utility Functions
+const calculateAdjustedNutrition = (nutrition, baseServing, serving) => {
+  const base = Number(baseServing) || 0;
+  const current = Number(serving) || 0;
+  const factor = base === 0 ? 0 : current / base;
+
+  return {
+    calories: ((Number(nutrition?.calories) || 0) * factor).toFixed(1),
+    protein: ((Number(nutrition?.protein) || 0) * factor).toFixed(1),
+    carbs: ((Number(nutrition?.carbs) || 0) * factor).toFixed(1),
+    fat: ((Number(nutrition?.fat) || 0) * factor).toFixed(1),
+  };
+};
+
+// Components
+const LoadingState = () => (
+  <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" }}>
+    <ActivityIndicator size="large" color="green" />
+    <Text style={{ marginTop: 10, color: "green" }}>Analyzing food image...</Text>
+  </View>
+);
+
+const NoPhotoState = () => (
+  <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff", padding: 20 }}>
+    <Text style={{ fontSize: 20, fontWeight: "bold", color: "#145a32", textAlign: "center", marginBottom: 10 }}>
+      Please capture an image first.
+    </Text>
+    <Text style={{ fontSize: 14, color: "#1a2a20ff", textAlign: "center" }}>
+      Make sure your image clearly shows the food for accurate analysis.
+    </Text>
+  </View>
+);
+
+const NoPredictionsState = ({ photoUri }) => (
+  <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff", padding: 20 }}>
+    <View style={styles.section}>
+      <Text style={styles.title}>Captured Image</Text>
+      <Image source={{ uri: photoUri }} style={styles.image} resizeMode="contain" />
+    </View>
+    <Text style={{ fontSize: 20, fontWeight: "bold", color: "#145a32", textAlign: "center", marginBottom: 10 }}>
+      No food image detected
+    </Text>
+    <Text style={{ fontSize: 12, color: "#1a2a20ff", textAlign: "center" }}>
+      Please ensure your image clearly shows the food, avoid blurry shots, include adequate lighting, and try capturing a closer view. 
+      You can also try taking a different angle for better detection.
+    </Text>
+  </View>
+);
+
+const TotalNutritionBox = React.memo(({ totals }) => (
+  <View style={styles.totalBoxContainer}>
+    <View style={styles.totalBox}>
+      <Text style={styles.totalLabel}>Total Calories</Text>
+      <Text style={styles.totalValue}>{totals.calories.toFixed(1)} kcal</Text>
+    </View>
+    <View style={styles.totalBox}>
+      <Text style={styles.totalLabel}>Total Protein</Text>
+      <Text style={styles.totalValue}>{totals.protein.toFixed(1)} g</Text>
+    </View>
+    <View style={styles.totalBox}>
+      <Text style={styles.totalLabel}>Total Carbs</Text>
+      <Text style={styles.totalValue}>{totals.carbs.toFixed(1)} g</Text>
+    </View>
+    <View style={styles.totalBox}>
+      <Text style={styles.totalLabel}>Total Fat</Text>
+      <Text style={styles.totalValue}>{totals.fat.toFixed(1)} g</Text>
+    </View>
+  </View>
+));
+
+const PredictionItem = React.memo(({ item, index, serving, onServingChange }) => {
+  const baseServing = Number(item?.nutrition?.serving_weight_grams) || 0;
+  const adjusted = calculateAdjustedNutrition(item?.nutrition, baseServing, serving);
+
+  return (
+    <View key={index} style={styles.predItem}>
+      <Text style={styles.predText}>{item.label}</Text>
+
+      <View style={styles.servingRow}>
+        <Text style={styles.nutritionText}><Text style={{ fontWeight: "bold" }}>Serving Size:</Text></Text>
+        <TextInput
+          style={styles.input}
+          value={String(serving ?? "")}
+          onChangeText={(val) => onServingChange(index, val)}
+          keyboardType="numeric"
+        />
+        <Text style={styles.nutritionText}>g</Text>
+      </View>
+
+      <View style={{ marginTop: 6 }}>
+        <Text style={styles.nutritionText}>Calories: {adjusted.calories} kcal</Text>
+        <Text style={styles.nutritionText}>Protein: {adjusted.protein} g</Text>
+        <Text style={styles.nutritionText}>Carbs: {adjusted.carbs} g</Text>
+        <Text style={styles.nutritionText}>Fat: {adjusted.fat} g</Text>
+      </View>
+    </View>
+  );
+});
+
+const SaveMealButton = React.memo(({ saving, onPress }) => (
+  <TouchableOpacity
+    style={{
+      backgroundColor: "green",
+      borderRadius: 8,
+      marginTop: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      height: 50,
+      width: "50%",
+      alignSelf: "center",
+    }}
+    onPress={onPress}
+    disabled={saving}
+  >
+    {saving ? (
+      <ActivityIndicator size="small" color="#fff" />
+    ) : (
+      <Text style={{ color: "white", fontWeight: "bold", fontSize: 16 }}>
+        Save Meal
+      </Text>
+    )}
+  </TouchableOpacity>
+));
+
+const MealTypeModal = React.memo(({ visible, onClose, onSelectMealType }) => (
+  <Modal
+    animationType="slide"
+    transparent={true}
+    visible={visible}
+    onRequestClose={onClose}
+  >
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)" }}>
+      <View style={{ width: "80%", backgroundColor: "#fff", padding: 20, borderRadius: 12 }}>
+        <Text style={{ fontSize: 18, fontWeight: "bold", marginBottom: 10 }}>Select Meal Type</Text>
+
+        {MEAL_TYPES.map((type) => (
+          <Pressable
+            key={type}
+            style={{ backgroundColor: "#c3fbccff", padding: 12, borderRadius: 8, marginVertical: 5, alignItems: "center", borderWidth: 2, borderColor: "green" }}
+            onPress={() => onSelectMealType(type)}
+          >
+            <Text style={{ color: "green", fontWeight: "bold" }}>{type}</Text>
+          </Pressable>
+        ))}
+
+        <Pressable
+          style={{ backgroundColor: "#ffbeb7ff", padding: 12, borderRadius: 8, marginTop: 10, alignItems: "center", borderWidth: 2, borderColor: "red" }}
+          onPress={onClose}
+        >
+          <Text style={{ color: "red", fontWeight: "bold" }}>Cancel</Text>
+        </Pressable>
+      </View>
+    </View>
+  </Modal>
+));
+
+// Main Component
 export default function ResultNav({ photoUri, userId, BACKEND_URL }) {
   const API_PREDICT_URL = `${BACKEND_URL}/predict/food`;
   const [predictions, setPredictions] = useState([]);
@@ -26,9 +186,27 @@ export default function ResultNav({ photoUri, userId, BACKEND_URL }) {
   const [loading, setLoading] = useState(false);
   const { setMealRefreshCounter } = useUser();
   const [saving, setSaving] = useState(false);
-
   const [mealTypeModalVisible, setMealTypeModalVisible] = useState(false);
 
+  // Calculate totals
+  const totals = useMemo(() => {
+    return predictions.reduce(
+      (acc, item, idx) => {
+        const base = Number(item?.nutrition?.serving_weight_grams) || 0;
+        const serving = Number(servings[idx]) || 0;
+        const factor = base === 0 ? 0 : serving / base;
+
+        acc.calories += (Number(item?.nutrition?.calories) || 0) * factor;
+        acc.protein += (Number(item?.nutrition?.protein) || 0) * factor;
+        acc.carbs += (Number(item?.nutrition?.carbs) || 0) * factor;
+        acc.fat += (Number(item?.nutrition?.fat) || 0) * factor;
+        return acc;
+      },
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    );
+  }, [predictions, servings]);
+
+  // Fetch predictions
   useEffect(() => {
     if (!photoUri) return;
 
@@ -59,39 +237,22 @@ export default function ResultNav({ photoUri, userId, BACKEND_URL }) {
     };
 
     sendPhotoToAPI();
-  }, [photoUri]);
+  }, [photoUri, API_PREDICT_URL]);
 
-  const totals = useMemo(() => {
-    return predictions.reduce(
-      (acc, item, idx) => {
-        const base = Number(item?.nutrition?.serving_weight_grams) || 0;
-        const serving = Number(servings[idx]) || 0;
-        const factor = base === 0 ? 0 : serving / base;
-
-        acc.calories += (Number(item?.nutrition?.calories) || 0) * factor;
-        acc.protein += (Number(item?.nutrition?.protein) || 0) * factor;
-        acc.carbs += (Number(item?.nutrition?.carbs) || 0) * factor;
-        acc.fat += (Number(item?.nutrition?.fat) || 0) * factor;
-        return acc;
-      },
-      { calories: 0, protein: 0, carbs: 0, fat: 0 }
-    );
-  }, [predictions, servings]);
-
-  const updateServing = (index, text) => {
+  // Event handlers
+  const updateServing = useCallback((index, text) => {
     const num = Number(text) || 0;
     setServings((prev) => {
       const next = [...prev];
       next[index] = num;
       return next;
     });
-  };
+  }, []);
 
-  // Open meal type modal
-  const openMealTypeModal = () => setMealTypeModalVisible(true);
+  const openMealTypeModal = useCallback(() => setMealTypeModalVisible(true), []);
+  const closeMealTypeModal = useCallback(() => setMealTypeModalVisible(false), []);
 
-  // Save meal and foods with selected type
-  const saveMealWithType = async (mealType) => {
+  const saveMealWithType = useCallback(async (mealType) => {
     try {
       setMealTypeModalVisible(false);
       setSaving(true);
@@ -108,7 +269,7 @@ export default function ResultNav({ photoUri, userId, BACKEND_URL }) {
         total_protein: totals.protein,
         total_carbs: totals.carbs,
         total_fat: totals.fat,
-        meal_type: mealType, // add meal_type
+        meal_type: mealType,
         created_at: localISOTime,
       });
 
@@ -148,51 +309,20 @@ export default function ResultNav({ photoUri, userId, BACKEND_URL }) {
       setSaving(false);
       Alert.alert("Error", "Failed to save meal or food logs.");
     }
-  };
+  }, [predictions, servings, totals, userId, BACKEND_URL, setMealRefreshCounter]);
 
-  if (!photoUri) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff", padding: 20 }}>
-        <Text style={{ fontSize: 20, fontWeight: "bold", color: "#145a32", textAlign: "center", marginBottom: 10 }}>
-          Please capture an image first.
-        </Text>
-        <Text style={{ fontSize: 14, color: "#1a2a20ff", textAlign: "center" }}>
-          Make sure your image clearly shows the food for accurate analysis.
-        </Text>
-      </View>
-    );
-  }
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" }}>
-        <ActivityIndicator size="large" color="green" />
-        <Text style={{ marginTop: 10, color: "green" }}>Processing image</Text>
-      </View>
-    );
-  }
-
-  if (!loading && predictions.length === 0) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff", padding: 20 }}>
-        <View style={styles.section}>
-          <Text style={styles.title}>Captured Image</Text>
-          <Image source={{ uri: photoUri }} style={styles.image} resizeMode="contain" />
-        </View>
-        <Text style={{ fontSize: 20, fontWeight: "bold", color: "#145a32", textAlign: "center", marginBottom: 10 }}>
-          No food image detected
-        </Text>
-        <Text style={{ fontSize: 12, color: "#1a2a20ff", textAlign: "center" }}>
-          Please ensure your image clearly shows the food, avoid blurry shots, include adequate lighting, and try capturing a closer view. 
-          You can also try taking a different angle for better detection.
-        </Text>
-      </View>
-    );
-  }
+  // Early returns for different states
+  if (!photoUri) return <NoPhotoState />;
+  if (loading) return <LoadingState />;
+  if (!loading && predictions.length === 0) return <NoPredictionsState photoUri={photoUri} />;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }} edges={["top"]}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === "ios" ? "padding" : "height"} 
+        keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
+      >
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.section}>
             <Text style={styles.title}>Captured Image</Text>
@@ -214,120 +344,28 @@ export default function ResultNav({ photoUri, userId, BACKEND_URL }) {
 
               <View style={styles.section}>
                 <Text style={styles.title}>Nutritional Analysis</Text>
-                <View style={styles.totalBoxContainer}>
-                  <View style={styles.totalBox}>
-                    <Text style={styles.totalLabel}>Total Calories</Text>
-                    <Text style={styles.totalValue}>{totals.calories.toFixed(1)} kcal</Text>
-                  </View>
-                  <View style={styles.totalBox}>
-                    <Text style={styles.totalLabel}>Total Protein</Text>
-                    <Text style={styles.totalValue}>{totals.protein.toFixed(1)} g</Text>
-                  </View>
-                  <View style={styles.totalBox}>
-                    <Text style={styles.totalLabel}>Total Carbs</Text>
-                    <Text style={styles.totalValue}>{totals.carbs.toFixed(1)} g</Text>
-                  </View>
-                  <View style={styles.totalBox}>
-                    <Text style={styles.totalLabel}>Total Fat</Text>
-                    <Text style={styles.totalValue}>{totals.fat.toFixed(1)} g</Text>
-                  </View>
-                </View>
+                <TotalNutritionBox totals={totals} />
 
-                {predictions.map((item, index) => {
-                  const baseServing = Number(item?.nutrition?.serving_weight_grams) || 0;
-                  const serving = Number(servings[index]) || 0;
-                  const factor = baseServing === 0 ? 0 : serving / baseServing;
+                {predictions.map((item, index) => (
+                  <PredictionItem
+                    key={index}
+                    item={item}
+                    index={index}
+                    serving={servings[index]}
+                    onServingChange={updateServing}
+                  />
+                ))}
 
-                  const adjusted = {
-                    calories: ((Number(item?.nutrition?.calories) || 0) * factor).toFixed(1),
-                    protein: ((Number(item?.nutrition?.protein) || 0) * factor).toFixed(1),
-                    carbs: ((Number(item?.nutrition?.carbs) || 0) * factor).toFixed(1),
-                    fat: ((Number(item?.nutrition?.fat) || 0) * factor).toFixed(1),
-                  };
-
-                  return (
-                    <View key={index} style={styles.predItem}>
-                      <Text style={styles.predText}>{item.label}</Text>
-
-                      <View style={styles.servingRow}>
-                        <Text style={styles.nutritionText}><Text style={{ fontWeight: "bold" }}>Serving Size:</Text></Text>
-                        <TextInput
-                          style={styles.input}
-                          value={String(servings[index] ?? "")}
-                          onChangeText={(val) => updateServing(index, val)}
-                          keyboardType="numeric"
-                        />
-                        <Text style={styles.nutritionText}>g</Text>
-                      </View>
-
-                      <View style={{ marginTop: 6 }}>
-                        <Text style={styles.nutritionText}>Calories: {adjusted.calories} kcal</Text>
-                        <Text style={styles.nutritionText}>Protein: {adjusted.protein} g</Text>
-                        <Text style={styles.nutritionText}>Carbs: {adjusted.carbs} g</Text>
-                        <Text style={styles.nutritionText}>Fat: {adjusted.fat} g</Text>
-                      </View>
-                    </View>
-                  );
-                })}
-
-                {/* Save Meal Button */}
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: "green",
-                    borderRadius: 8,
-                    marginTop: 20,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    height: 50,
-                    width: "50%",
-                    alignSelf: "center",
-                  }}
-                  onPress={openMealTypeModal}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={{ color: "white", fontWeight: "bold", fontSize: 16 }}>
-                      Save Meal
-                    </Text>
-                  )}
-                </TouchableOpacity>
+                <SaveMealButton saving={saving} onPress={openMealTypeModal} />
               </View>
             </>
           )}
 
-          {/* Meal Type Modal */}
-          <Modal
-            animationType="slide"
-            transparent={true}
+          <MealTypeModal
             visible={mealTypeModalVisible}
-            onRequestClose={() => setMealTypeModalVisible(false)}
-          >
-            <View style={{ flex:1, justifyContent:"center", alignItems:"center", backgroundColor:"rgba(0,0,0,0.5)" }}>
-              <View style={{ width:"80%", backgroundColor:"#fff", padding:20, borderRadius:12 }}>
-                <Text style={{ fontSize:18, fontWeight:"bold", marginBottom:10 }}>Select Meal Type</Text>
-
-                {["Breakfast","Lunch","Dinner","Snack"].map((type) => (
-                  <Pressable
-                    key={type}
-                    style={{ backgroundColor:"#c3fbccff", padding:12, borderRadius:8, marginVertical:5, alignItems:"center", borderWidth: 2, borderColor: "green" }}
-                    onPress={() => saveMealWithType(type)}
-                  >
-                    <Text style={{ color:"green", fontWeight:"bold" }}>{type}</Text>
-                  </Pressable>
-                ))}
-
-                <Pressable
-                  style={{ backgroundColor:"#ffbeb7ff", padding:12, borderRadius:8, marginTop:10, alignItems:"center", borderWidth: 2, borderColor: "red" }}
-                  onPress={() => setMealTypeModalVisible(false)}
-                >
-                  <Text style={{ color:"red", fontWeight:"bold" }}>Cancel</Text>
-                </Pressable>
-              </View>
-            </View>
-          </Modal>
-
+            onClose={closeMealTypeModal}
+            onSelectMealType={saveMealWithType}
+          />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
