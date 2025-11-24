@@ -6,24 +6,21 @@ import numpy as np
 import cv2
 import base64
 from database.supabase_connection import supabase
-
+import asyncio
+from functools import lru_cache
 
 router = APIRouter(prefix="/predict", tags=["Predict"])
 model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "model/best.pt")
 
-try:
-    model = YOLO(model_path)
-    print("YOLO model loaded successfully.")
-except Exception as e:
-    print("Failed to load YOLO model:", e)
-    model = None
-
-def get_nutrition_for_labels(labels: list):
-    if not labels:
+# Caching nutrition data to avoid repeated database calls
+@lru_cache(maxsize=100)
+def get_nutrition_for_labels_cached(labels_tuple: tuple):
+    """Cached version of nutrition lookup"""
+    if not labels_tuple:
         return {}
 
-    unique = list(set(labels))
-
+    unique = list(set(labels_tuple))
+    
     response = (
         supabase.table("food_nutrition_data")
         .select("food_name, calories, protein, carbs, fat, serving_weight_grams")
@@ -31,67 +28,122 @@ def get_nutrition_for_labels(labels: list):
         .execute()
     )
 
-    if response.data:
-        return {item["food_name"]: item for item in response.data}
+    return {item["food_name"]: item for item in response.data} if response.data else {}
 
-    return {}
+# Load model once at startup
+@router.on_event("startup")
+async def load_model():
+    global model
+    try:
+        model = YOLO(model_path)
+        print("YOLO model loaded successfully.")
+    except Exception as e:
+        print("Failed to load YOLO model:", e)
+        model = None
 
+def validate_image_file(file: UploadFile):
+    """Validate file type and content"""
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    # Checking file size (max 10MB)
+    MAX_SIZE = 10 * 1024 * 1024
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    file.file.seek(0) 
+    
+    if file_size > MAX_SIZE:
+        raise HTTPException(status_code=400, detail="File too large. Max 10MB allowed.")
+    
+    return True
+
+def process_detections(results):
+    """Process YOLO results into detection objects"""
+    detections = []
+    labels = []
+    
+    for box in results[0].boxes:
+        cls = int(box.cls)
+        label = results[0].names[cls]
+        conf = float(box.conf)
+        
+        # Only include high-confidence detections
+        if conf < 0.5:
+            continue
+            
+        detections.append({
+            "label": label,
+            "confidence": conf,
+            "box": box.xyxy[0].tolist()
+        })
+        labels.append(label)
+    
+    return detections, labels
+
+def encode_image_to_base64(image):
+    """Encode image to base64 efficiently"""
+    _, buffer = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return base64.b64encode(buffer).decode("utf-8")
 
 @router.post("/food")
 async def predict_food(file: UploadFile = File(...)):
+    # Model check
     if not model:
-        raise HTTPException(status_code=500, detail="Model not loaded on server")
-
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
-
+        raise HTTPException(status_code=503, detail="Model not available")
+    
+    # File validation
+    validate_image_file(file)
+    
     try:
+        # Read and decode image
         contents = await file.read()
         np_img = np.frombuffer(contents, np.uint8)
         img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
-
+        
         if img is None:
             raise HTTPException(status_code=400, detail="Invalid image file")
-
-        results = model(img)
-
-        detections = []
-        labels = []
-
-        for box in results[0].boxes:
-            cls = int(box.cls)
-            label = results[0].names[cls]
-            conf = float(box.conf)
-
-            if conf < 0.50:
-                continue
-            
-            x1, y1, x2, y2 = box.xyxy[0].tolist()
-
-            detections.append({
-                "label": label,
-                "confidence": conf,
-                "box": [x1, y1, x2, y2]
+        
+        # Run inference (using async to avoid blocking)
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(None, model, img)
+        
+        # Process detections
+        detections, labels = process_detections(results)
+        
+        if not detections:
+            return JSONResponse(content={
+                "predictions": [],
+                "count": 0,
+                "message": "No food items detected with sufficient confidence"
             })
-
-            labels.append(label)
-
-        nutrition_map = get_nutrition_for_labels(labels)
-
+        
+        # Get nutrition data (cached)
+        nutrition_map = get_nutrition_for_labels_cached(tuple(labels))
+        
+        # Add nutrition to detections
         for item in detections:
             item["nutrition"] = nutrition_map.get(item["label"], {})
-
+        
+        # Generate annotated image
         annotated = results[0].plot() 
         annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-
-        _, buffer = cv2.imencode(".jpg", annotated_rgb)
-        image_base64 = base64.b64encode(buffer).decode("utf-8")
-
-        return JSONResponse(content={
+        image_base64 = encode_image_to_base64(annotated_rgb)
+        
+        return {
             "predictions": detections,
             "count": len(detections),
             "image": image_base64
-        })
-
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Prediction error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error during prediction")
+
+@router.get("/health")
+async def health_check():
+    return {
+        "status": "healthy" if model else "unhealthy",
+        "model_loaded": model is not None
+    }
