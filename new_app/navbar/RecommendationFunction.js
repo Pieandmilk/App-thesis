@@ -66,8 +66,10 @@ Recommend **only new meals or snacks** for the rest of the day, based on the use
 Do **not** suggest any foods the user has already eaten.
 
 **Start your response exactly like this:**
+You ate today: 
+${foodListText}
 
-Hi heres the food recommendation for today:
+Hi, here are the food recommendations that match what you’ve eaten today:
 
 After listing the new foods, write a short, friendly description of each item (e.g., "the quinoa provides protein and fiber…"). 
 End with a sentence starting with "Dont forget" that gives practical, positive tips for the rest of the day's meals. 
