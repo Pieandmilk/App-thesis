@@ -62,6 +62,10 @@ async def predict_food(file: UploadFile = File(...)):
             cls = int(box.cls)
             label = results[0].names[cls]
             conf = float(box.conf)
+
+            if conf < 0.50:
+                continue
+            
             x1, y1, x2, y2 = box.xyxy[0].tolist()
 
             detections.append({
