@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -9,31 +9,29 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  Switch, // <--- Added Switch
-  Dimensions,
+  Switch,
 } from "react-native";
 import axios from "axios";
-import { useUser } from "../UserContext";
 import Markdown from "react-native-markdown-display";
 import { MaterialIcons, FontAwesome5, Ionicons } from "@expo/vector-icons";
 
-const { width } = Dimensions.get("window");
+// Constants
+const API_CONFIG = {
+  timeout: 120000,
+  headers: { "ngrok-skip-browser-warning": "true" }
+};
 
-export default function RecommendationNav({ userId, BACKEND_URL }) {
+// Utility Functions
+const formatGoal = (goal) => {
+  if (!goal) return "Health";
+  return goal
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+// Custom Hooks
+const useUserProfile = (userId, BACKEND_URL) => {
   const [userProfile, setUserProfile] = useState(null);
-  const [recommendation, setRecommendation] = useState("");
-  const [loading, setLoading] = useState(false);
-  
-  // New State for "Sports Mode"
-  const [isSportsMode, setIsSportsMode] = useState(false);
-
-  // Helper to format "muscle_gain" -> "Muscle Gain"
-  const formatGoal = (goal) => {
-    if (!goal) return "Health";
-    return goal
-      .replace(/_/g, " ") // Replace underscores with spaces
-      .replace(/\b\w/g, (char) => char.toUpperCase()); // Capitalize first letters
-  };
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -51,7 +49,174 @@ export default function RecommendationNav({ userId, BACKEND_URL }) {
     }
   }, [userId, BACKEND_URL]);
 
-  const generateRecommendation = async () => {
+  return userProfile;
+};
+
+// Components
+const LoadingState = () => (
+  <View style={styles.loadingContainer}>
+    <ActivityIndicator size="large" color="#2e7d32" />
+    <Text style={styles.loadingText}>Loading Profile...</Text>
+  </View>
+);
+
+const Header = () => (
+  <View style={styles.headerContainer}>
+    <MaterialIcons name="health-and-safety" size={32} color="#2e7d32" />
+    <Text style={styles.headerTitle}>AI Nutritionist</Text>
+  </View>
+);
+
+const StatItem = ({ icon, label, value, iconColor = "#555" }) => (
+  <View style={styles.statItem}>
+    {icon}
+    <Text style={styles.statLabel}>{label}</Text>
+    <Text style={styles.statValue}>{value}</Text>
+  </View>
+);
+
+const ProfileDashboard = React.memo(({ userProfile }) => {
+  const stats = useMemo(() => [
+    {
+      icon: <FontAwesome5 name="weight" size={18} color="#555" />,
+      label: "Weight",
+      value: `${userProfile.weight} kg`
+    },
+    {
+      icon: <MaterialIcons name="height" size={22} color="#555" />,
+      label: "Height",
+      value: `${userProfile.height} cm`
+    },
+    {
+      icon: <MaterialIcons name="track-changes" size={22} color="#555" />,
+      label: "Goal",
+      value: formatGoal(userProfile.goal)
+    },
+    {
+      icon: <FontAwesome5 name="fire" size={18} color="#d35400" />,
+      label: "Calories",
+      value: userProfile.calories
+    }
+  ], [userProfile]);
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle}>My Stats</Text>
+      
+      <View style={styles.statsGrid}>
+        {stats.map((stat, index) => (
+          <StatItem key={index} {...stat} />
+        ))}
+      </View>
+
+      <View style={styles.macrosContainer}>
+        <Text style={styles.macroText}>Protein: {userProfile.protein}g</Text>
+        <Text style={styles.macroText}>Carbs: {userProfile.carbs}g</Text>
+        <Text style={styles.macroText}>Fat: {userProfile.fat}g</Text>
+      </View>
+    </View>
+  );
+});
+
+const SportsModeToggle = React.memo(({ isSportsMode, setIsSportsMode }) => {
+  const handleToggle = useCallback(() => {
+    setIsSportsMode(prev => !prev);
+  }, [setIsSportsMode]);
+
+  return (
+    <View style={styles.toggleContainer}>
+      <View style={styles.toggleTextContainer}>
+        <Ionicons 
+          name={isSportsMode ? "fitness" : "body"} 
+          size={24} 
+          color={isSportsMode ? "#d35400" : "#2e7d32"} 
+        />
+        <View style={{ marginLeft: 10 }}>
+          <Text style={styles.toggleTitle}>
+            {isSportsMode ? "Sports Mode" : "General Mode"}
+          </Text>
+          <Text style={styles.toggleSubtitle}>
+            {isSportsMode ? "Detailed performance & timing advice" : "Simple & balanced advice"}
+          </Text>
+        </View>
+      </View>
+      <Switch
+        trackColor={{ false: "#767577", true: "#ffcc80" }}
+        thumbColor={isSportsMode ? "#d35400" : "#f4f3f4"}
+        ios_backgroundColor="#3e3e3e"
+        onValueChange={handleToggle}
+        value={isSportsMode}
+      />
+    </View>
+  );
+});
+
+const GenerateButton = React.memo(({ loading, isSportsMode, onPress }) => {
+  const buttonStyle = useMemo(() => [
+    styles.button,
+    loading && styles.buttonDisabled,
+    isSportsMode && styles.buttonSports
+  ], [loading, isSportsMode]);
+
+  return (
+    <TouchableOpacity
+      style={buttonStyle}
+      onPress={onPress}
+      disabled={loading}
+    >
+      {loading ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <ActivityIndicator color="#fff" style={{ marginRight: 10 }}/>
+          <Text style={styles.buttonText}>Analyzing Profile...</Text>
+        </View>
+      ) : (
+        <Text style={styles.buttonText}>
+          {isSportsMode ? "Generate Meal Plan" : "Generate Meal Plan"}
+        </Text>
+      )}
+    </TouchableOpacity>
+  );
+});
+
+const RecommendationResult = React.memo(({ recommendation, isSportsMode }) => {
+  if (!recommendation) return null;
+
+  const resultHeaderStyle = useMemo(() => [
+    styles.resultHeader,
+    isSportsMode && styles.resultHeaderSports
+  ], [isSportsMode]);
+
+  return (
+    <View style={styles.resultCard}>
+      <View style={resultHeaderStyle}>
+        <MaterialIcons 
+          name={isSportsMode ? "fitness-center" : "restaurant-menu"} 
+          size={24} 
+          color="#fff" 
+        />
+        <Text style={styles.resultTitle}>
+          {isSportsMode ? "Athlete's Strategy" : "Suggested Plan"}
+        </Text>
+      </View>
+      
+      <View style={styles.markdownContainer}>
+        <Markdown style={markdownStyles}>
+          {recommendation}
+        </Markdown>
+      </View>
+    </View>
+  );
+});
+
+// Main Component
+export default function RecommendationNav({ userId, BACKEND_URL }) {
+  const [recommendation, setRecommendation] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [isSportsMode, setIsSportsMode] = useState(false);
+
+  const userProfile = useUserProfile(userId, BACKEND_URL);
+
+  const generateRecommendation = useCallback(async () => {
     if (!userProfile) {
       Alert.alert("Error", "User profile not found");
       return;
@@ -61,21 +226,16 @@ export default function RecommendationNav({ userId, BACKEND_URL }) {
     setRecommendation("");
 
     try {
-      // 1. Define the "Mode" logic
       const modeInstruction = isSportsMode
-        ? `
-        **MODE: PROFESSIONAL ATHLETE (SPORTS MODE)**
-        - Provide a detailed, strict breakdown.
-        - Include **Pre-Workout** and **Post-Workout** meal recommendations.
-        - Explain the *timing* of carbohydrates and proteins.
-        - Focus on performance recovery and energy optimization.`
-        : `
-        **MODE: GENERAL HEALTH (BEGINNER)**
-        - Keep it simple, easy to follow, and encouraging.
-        - Focus on balanced, tasty Filipino meals.`;
+        ? `**MODE: PROFESSIONAL ATHLETE (SPORTS MODE)**
+- Include **Pre-Workout** and **Post-Workout** meal recommendations.
+- Explain the *timing* of carbohydrates and proteins.
+- Focus on performance recovery and energy optimization.`
+        : `**MODE: GENERAL HEALTH (BEGINNER)**
+- Keep it simple, easy to follow, and encouraging.
+- Focus on balanced, tasty Filipino meals.`;
 
-      const prompt = `
-You are a supportive nutritionist.
+      const prompt = `You are a supportive nutritionist.
 User Stats:
 - Age: ${userProfile.age}
 - Sex: ${userProfile.sex}
@@ -91,21 +251,17 @@ Create a 1-Day Meal Plan (Filipino Style).
 Format using Markdown:
 - Use ## for Sections (Breakfast, Lunch, Dinner, Workout Nutrition).
 - Use **bold** for food names.
-- Use bullet points for macros.
-`;
+- Use bullet points for macros.`;
 
       const response = await axios.post(
-        "http://192.168.1.15:1234/v1/chat/completions",
+        "https://oversteadily-unengendered-bonny.ngrok-free.dev/v1/chat/completions",
         {
-            model: "local-model",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.7,
-            max_tokens: 1200, // Increased for detailed sports mode
+          model: "local-model",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_tokens: 1200,
         },
-        {
-             headers: { "ngrok-skip-browser-warning": "true" },
-             timeout: 120000 
-        }
+        API_CONFIG
       );
 
       const content = response.data.choices[0].message.content;
@@ -116,15 +272,10 @@ Format using Markdown:
     } finally {
       setLoading(false);
     }
-  };
+  }, [userProfile, isSportsMode]);
 
   if (!userProfile) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2e7d32" />
-        <Text style={styles.loadingText}>Loading Profile...</Text>
-      </View>
-    );
+    return <LoadingState />;
   }
 
   return (
@@ -137,116 +288,27 @@ Format using Markdown:
         style={styles.mainContainer}
         showsVerticalScrollIndicator={false}
       >
-        
-        {/* Header */}
-        <View style={styles.headerContainer}>
-           <MaterialIcons name="health-and-safety" size={32} color="#2e7d32" />
-           <Text style={styles.headerTitle}>AI Nutritionist</Text>
-        </View>
-
-        {/* 1. Profile Dashboard */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>My Stats</Text>
-          
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-                <FontAwesome5 name="weight" size={18} color="#555" />
-                <Text style={styles.statLabel}>Weight</Text>
-                <Text style={styles.statValue}>{userProfile.weight} kg</Text>
-            </View>
-            <View style={styles.statItem}>
-                <MaterialIcons name="height" size={22} color="#555" />
-                <Text style={styles.statLabel}>Height</Text>
-                <Text style={styles.statValue}>{userProfile.height} cm</Text>
-            </View>
-            <View style={styles.statItem}>
-                <MaterialIcons name="track-changes" size={22} color="#555" />
-                <Text style={styles.statLabel}>Goal</Text>
-                {/* Updated to use formatGoal */}
-                <Text style={styles.statValue}>{formatGoal(userProfile.goal)}</Text>
-            </View>
-            <View style={styles.statItem}>
-                <FontAwesome5 name="fire" size={18} color="#d35400" />
-                <Text style={styles.statLabel}>Calories</Text>
-                <Text style={styles.statValue}>{userProfile.calories}</Text>
-            </View>
-          </View>
-
-          <View style={styles.macrosContainer}>
-            <Text style={styles.macroText}>Protein: {userProfile.protein}g</Text>
-            <Text style={styles.macroText}>Carbs: {userProfile.carbs}g</Text>
-            <Text style={styles.macroText}>Fat: {userProfile.fat}g</Text>
-          </View>
-        </View>
-
-        {/* 2. Sports Mode Toggle */}
-        <View style={styles.toggleContainer}>
-            <View style={styles.toggleTextContainer}>
-                <Ionicons 
-                    name={isSportsMode ? "fitness" : "body"} 
-                    size={24} 
-                    color={isSportsMode ? "#d35400" : "#2e7d32"} 
-                />
-                <View style={{ marginLeft: 10 }}>
-                    <Text style={styles.toggleTitle}>
-                        {isSportsMode ? "Sports Mode" : "General Mode"}
-                    </Text>
-                    <Text style={styles.toggleSubtitle}>
-                        {isSportsMode ? "Detailed performance & timing advice" : "Simple & balanced advice"}
-                    </Text>
-                </View>
-            </View>
-            <Switch
-                trackColor={{ false: "#767577", true: "#ffcc80" }}
-                thumbColor={isSportsMode ? "#d35400" : "#f4f3f4"}
-                ios_backgroundColor="#3e3e3e"
-                onValueChange={() => setIsSportsMode(prev => !prev)}
-                value={isSportsMode}
-            />
-        </View>
-
-        {/* 3. Generate Button */}
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled, isSportsMode && styles.buttonSports]}
+        <Header />
+        <ProfileDashboard userProfile={userProfile} />
+        <SportsModeToggle 
+          isSportsMode={isSportsMode} 
+          setIsSportsMode={setIsSportsMode} 
+        />
+        <GenerateButton 
+          loading={loading}
+          isSportsMode={isSportsMode}
           onPress={generateRecommendation}
-          disabled={loading}
-        >
-          {loading ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-               <ActivityIndicator color="#fff" style={{ marginRight: 10 }}/>
-               <Text style={styles.buttonText}>Analyzing Profile...</Text>
-            </View>
-          ) : (
-            <Text style={styles.buttonText}>
-                {isSportsMode ? "Generate Pro Plan" : "Generate Meal Plan"}
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        {/* 4. The Result */}
-        {recommendation !== "" && (
-          <View style={styles.resultCard}>
-            <View style={[styles.resultHeader, isSportsMode && styles.resultHeaderSports]}>
-                <MaterialIcons name={isSportsMode ? "fitness-center" : "restaurant-menu"} size={24} color="#fff" />
-                <Text style={styles.resultTitle}>
-                    {isSportsMode ? "Athlete's Strategy" : "Suggested Plan"}
-                </Text>
-            </View>
-            
-            <View style={styles.markdownContainer}>
-                <Markdown style={markdownStyles}>
-                    {recommendation}
-                </Markdown>
-            </View>
-          </View>
-        )}
-
+        />
+        <RecommendationResult 
+          recommendation={recommendation}
+          isSportsMode={isSportsMode}
+        />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-// --- Styles ---
+// Styles remain the same as your original
 const styles = StyleSheet.create({
   mainContainer: {
     flex: 1,
@@ -260,6 +322,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#666",
   },
   headerContainer: {
     flexDirection: "row",
@@ -373,7 +440,7 @@ const styles = StyleSheet.create({
     marginBottom: 25,
   },
   buttonSports: {
-    backgroundColor: "#d35400", // Orange for Sports Mode
+    backgroundColor: "#d35400",
     shadowColor: "#d35400",
   },
   buttonDisabled: {
@@ -400,7 +467,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   resultHeaderSports: {
-    backgroundColor: "#e67e22", // Darker orange for Sports Header
+    backgroundColor: "#e67e22",
   },
   resultTitle: {
     color: "#fff",
@@ -413,7 +480,7 @@ const styles = StyleSheet.create({
   },
 });
 
-// --- Markdown Specific Styles ---
+// Markdown Styles
 const markdownStyles = {
   body: {
     fontSize: 16,
