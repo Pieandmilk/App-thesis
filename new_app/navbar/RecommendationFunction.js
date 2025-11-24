@@ -1,43 +1,38 @@
 import axios from "axios";
 import { Alert } from "react-native";
 
-export const generateRecommendation = async ({ userId, dailyMeals = [], BACKEND_URL }) => {
-  try {
-    if (!dailyMeals || dailyMeals.length === 0) {
-      Alert.alert("Info", "No meals logged for today. Please log a meal first.");
-      return "";
-    }
+// Constants
+const AI_API_URL = "https://oversteadily-unengendered-bonny.ngrok-free.dev/v1/chat/completions";
+const AI_CONFIG = {
+  model: "local-model",
+  temperature: 0.7,
+  max_tokens: 400,
+};
+const API_HEADERS = { "ngrok-skip-browser-warning": "true" };
+const API_TIMEOUT = 120000;
 
-    // 1. Fetch user profile
-    const res = await fetch(`${BACKEND_URL}/profile/${userId}`);
-    const userProfile = await res.json();
-    if (!userProfile) throw new Error("User profile not found");
+// Utility Functions
+const buildFoodListText = (dailyMeals) => {
+  if (!dailyMeals || dailyMeals.length === 0) return "";
 
-    // 2. Prepare food list text
-    let foodCounter = 1;
-    const foodListText = dailyMeals
-      .flatMap((meal) =>
-        (meal.foods || []).map((f) => {
-          const qtyText = f.quantity ? ` (${f.quantity}x)` : "";
-          return `${foodCounter++}. ${f.food_name}${qtyText} - ${meal.meal_type || "Meal"}`;
-        })
-      )
-      .join("\n");
+  let foodCounter = 1;
+  return dailyMeals
+    .flatMap((meal) =>
+      (meal.foods || []).map((food) => {
+        const quantityText = food.quantity ? ` (${food.quantity}x)` : "";
+        return `${foodCounter++}. ${food.food_name}${quantityText} - ${meal.meal_type || "Meal"}`;
+      })
+    )
+    .join("\n");
+};
 
-    const foodsTextFinal = foodListText || "";
+const hasEatenAllMainMeals = (dailyMeals) => {
+  const mainMeals = ["breakfast", "lunch", "dinner"];
+  const loggedMealTypes = dailyMeals.map(meal => meal.meal_type?.toLowerCase() || "");
+  return mainMeals.every(meal => loggedMealTypes.includes(meal));
+};
 
-    // 3. Determine if user has eaten all main meals
-    const mealsLogged = dailyMeals.map((meal) => meal.meal_type.toLowerCase());
-    const mainMeals = ["breakfast", "lunch", "dinner"];
-    const userAteAllMeals = mainMeals.every((meal) => mealsLogged.includes(meal));
-
-    // 4. Build AI prompt
-    let prompt = `
-You are a professional and friendly sports nutritionist.
-Your task is to give clear, actionable, and encouraging advice to help the user balance the rest of their meals today. 
-Your recommendations must always consider the user’s stats (age, weight, height, goal, calories, and macros). 
-Your tone should be supportive, positive, and simple.
-
+const buildUserStatsPrompt = (userProfile) => `
 ### User Stats:
 - Age: ${userProfile.age}
 - Sex: ${userProfile.sex}
@@ -49,24 +44,23 @@ Your tone should be supportive, positive, and simple.
 - Macronutrient Targets: Protein ${userProfile.protein}g, Carbs ${userProfile.carbs}g, Fat ${userProfile.fat}g
 `;
 
-    if (!foodsTextFinal) {
-      // No meals logged
-      prompt += `
+const buildPromptForNoMeals = (userStats) => `
+${userStats}
 The user has not logged any meals today. 
 Ask them politely to log at least one meal (breakfast, lunch, dinner, or snack) before giving a recommendation.
 `;
-    } else if (userAteAllMeals) {
-      // All main meals logged
-      prompt += `
+
+const buildPromptForAllMeals = (userStats) => `
+${userStats}
 The user has eaten all their meals for today. 
 Do not recommend anything for today. 
 Instead, provide a friendly summary and give guidance or tips for tomorrow's meals based on the user's stats.
 `;
-    } else {
-      // Some meals logged
-      prompt += `
+
+const buildPromptForPartialMeals = (userStats, foodListText) => `
+${userStats}
 The user has already eaten the following foods today:
-${foodsTextFinal}
+${foodListText}
 
 Recommend **only new meals or snacks** for the rest of the day, based on the user's stats and remaining calorie/macronutrient needs. 
 Do **not** suggest any foods the user has already eaten.
@@ -79,29 +73,72 @@ After listing the new foods, write a short, friendly description of each item (e
 End with a sentence starting with "Dont forget" that gives practical, positive tips for the rest of the day's meals. 
 Keep it supportive, simple, and actionable, as if you were coaching the user personally.
 `;
+
+// Main Function
+export const generateRecommendation = async ({ userId, dailyMeals = [], BACKEND_URL }) => {
+  try {
+    // Early validation
+    if (!dailyMeals || dailyMeals.length === 0) {
+      Alert.alert("Info", "No meals logged for today. Please log a meal first.");
+      return "";
+    }
+
+    // Fetch user profile
+    const profileResponse = await fetch(`${BACKEND_URL}/profile/${userId}`);
+    if (!profileResponse.ok) throw new Error("Failed to fetch user profile");
+    
+    const userProfile = await profileResponse.json();
+    if (!userProfile) throw new Error("User profile not found");
+
+    // Build food list and determine meal status
+    const foodListText = buildFoodListText(dailyMeals);
+    const userAteAllMeals = hasEatenAllMainMeals(dailyMeals);
+    const userStats = buildUserStatsPrompt(userProfile);
+
+    // Build appropriate prompt
+    let prompt = `You are a professional and friendly sports nutritionist.
+Your task is to give clear, actionable, and encouraging advice to help the user balance the rest of their meals today. 
+Your recommendations must always consider the user's stats (age, weight, height, goal, calories, and macros). 
+Your tone should be supportive, positive, and simple.
+`;
+
+    if (!foodListText) {
+      prompt += buildPromptForNoMeals(userStats);
+    } else if (userAteAllMeals) {
+      prompt += buildPromptForAllMeals(userStats);
+    } else {
+      prompt += buildPromptForPartialMeals(userStats, foodListText);
     }
 
     console.log("AI Prompt:", prompt);
 
-    // 5. Call AI API
+    // Call AI API
     const response = await axios.post(
-      "http://192.168.1.15:1234/v1/chat/completions",
+      AI_API_URL,
       {
-        model: "local-model",
+        ...AI_CONFIG,
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 700,
       },
       {
-        headers: { "ngrok-skip-browser-warning": "true" },
-        timeout: 120000,
+        headers: API_HEADERS,
+        timeout: API_TIMEOUT,
       }
     );
 
     return response.data?.choices?.[0]?.message?.content || "No recommendation generated";
+
   } catch (error) {
     console.error("Recommendation error:", error);
-    Alert.alert("Error", "Failed to generate recommendation.");
+    
+    // More specific error messages
+    if (error.code === 'ECONNABORTED') {
+      Alert.alert("Error", "Request timed out. Please try again.");
+    } else if (error.response) {
+      Alert.alert("Error", "AI service is currently unavailable.");
+    } else {
+      Alert.alert("Error", "Failed to generate recommendation. Please check your connection.");
+    }
+    
     return "";
   }
 };
