@@ -56,11 +56,11 @@ export default StyleSheet.create({
     fontWeight: "600" 
   },
   dateNumber: { 
-    color: "#d4f1d4", 
+    color: "#fff", 
     fontSize: 16 
   },
   dateName: { 
-    color: "#d4f1d4", 
+    color: "#fff", 
     fontSize: 12 
   },
   highlightDateNumber: { 
