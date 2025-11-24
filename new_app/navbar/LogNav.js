@@ -11,12 +11,16 @@ import {
 } from "react-native";
 import CalendarStrip from "react-native-calendar-strip";
 import moment from "moment";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useUser } from "../UserContext";
 import styles from "../styles/LogNavStyle";
 import Markdown from "react-native-markdown-display";
 import { generateRecommendation } from "./RecommendationFunction";
 
+// Constants
+const MEAL_ORDER = ["Breakfast", "Lunch", "Dinner", "Snacks"];
+
+// Utility Functions
 const getLocalDateString = (date = new Date()) => {
   const localTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return localTime.toISOString().split("T")[0];
@@ -30,64 +34,136 @@ export default function LogNav({ userId, BACKEND_URL }) {
   const [foodLogs, setFoodLogs] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [loadingMeals, setLoadingMeals] = useState(false);
-
   const [recommendation, setRecommendation] = useState("");
   const [recModalVisible, setRecModalVisible] = useState(false);
   const [recLoading, setRecLoading] = useState(false);
 
-  const MEAL_ORDER = ["Breakfast", "Lunch", "Dinner", "Snacks"];
-  const todayStr = getLocalDateString();
+  // Cache refs
+  const mealsCache = useRef(new Map());
+  const foodLogsCache = useRef(new Map());
 
-  useEffect(() => {
-    fetchMeals(selectedDate);
-  }, [selectedDate, mealRefreshCounter]);
+  // Memoized values
+  const todayStr = useMemo(() => getLocalDateString(), []);
+  const yesterdayStr = useMemo(() => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return getLocalDateString(yesterday);
+  }, []);
 
-  const fetchMeals = async (date) => {
+  const formatDateTitle = useCallback((dateStr) => {
+    if (dateStr === todayStr) return "Meals Today";
+    if (dateStr === yesterdayStr) return "Meals Yesterday";
+    return `Meals on ${new Date(dateStr).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })}`;
+  }, [todayStr, yesterdayStr]);
+
+  const sortedMealTypes = useMemo(() => [
+    ...MEAL_ORDER.filter((type) => groupedMeals[type]),
+    ...Object.keys(groupedMeals).filter((type) => !MEAL_ORDER.includes(type)),
+  ], [groupedMeals]);
+
+  const hasMeals = useMemo(() => sortedMealTypes.length > 0, [sortedMealTypes]);
+  const isToday = useMemo(() => selectedDate === todayStr, [selectedDate, todayStr]);
+
+  // Markdown styles
+  const markdownStyles = useMemo(() => ({
+    body: styles.markdownBody,
+    heading1: styles.markdownHeading1,
+    heading2: styles.markdownHeading2,
+    strong: styles.markdownStrong,
+    list_item: styles.markdownListItem,
+  }), []);
+
+  // Data fetching with caching
+  const fetchMeals = useCallback(async (date) => {
+    // Check cache first
+    if (mealsCache.current.has(date)) {
+      setGroupedMeals(mealsCache.current.get(date));
+      return;
+    }
+
     try {
       setLoadingMeals(true);
       const res = await fetch(`${BACKEND_URL}/meal/?user_id=${userId}&date=${date}`);
+      
       if (!res.ok) {
-        setGroupedMeals({});
+        const emptyData = {};
+        mealsCache.current.set(date, emptyData);
+        setGroupedMeals(emptyData);
         return;
       }
+      
       const data = await res.json();
+      
       if (!Array.isArray(data) || data.length === 0) {
-        setGroupedMeals({});
+        const emptyData = {};
+        mealsCache.current.set(date, emptyData);
+        setGroupedMeals(emptyData);
         return;
       }
 
-      const grouped = {};
-      data.forEach((meal) => {
+      const grouped = data.reduce((acc, meal) => {
         const type = meal.meal_type || "Other";
-        if (!grouped[type]) grouped[type] = [];
-        grouped[type].push(meal);
-      });
+        if (!acc[type]) acc[type] = [];
+        acc[type].push(meal);
+        return acc;
+      }, {});
 
+      // Cache the result
+      mealsCache.current.set(date, grouped);
       setGroupedMeals(grouped);
     } catch (err) {
       console.error("Network or fetch error:", err);
-      setGroupedMeals({});
+      const emptyData = {};
+      mealsCache.current.set(date, emptyData);
+      setGroupedMeals(emptyData);
     } finally {
       setLoadingMeals(false);
     }
-  };
+  }, [userId, BACKEND_URL]);
 
-  const fetchFoodLogs = async (meal) => {
+  // Invalidate cache when mealRefreshCounter changes
+  useEffect(() => {
+    mealsCache.current.clear();
+    foodLogsCache.current.clear();
+    fetchMeals(selectedDate);
+  }, [mealRefreshCounter, selectedDate, fetchMeals]);
+
+  const fetchFoodLogs = useCallback(async (meal) => {
+    const cacheKey = `${meal.id}`;
+    
+    // Check cache first
+    if (foodLogsCache.current.has(cacheKey)) {
+      setFoodLogs(foodLogsCache.current.get(cacheKey));
+      setSelectedMeal(meal);
+      setModalVisible(true);
+      return;
+    }
+
     try {
       const res = await fetch(`${BACKEND_URL}/log_food/?user_id=${userId}&meal_id=${meal.id}`);
       const data = await (res.ok ? res.json() : []);
-      setFoodLogs(Array.isArray(data) ? data : []);
+      const foodLogsData = Array.isArray(data) ? data : [];
+      
+      // Cache the result
+      foodLogsCache.current.set(cacheKey, foodLogsData);
+      setFoodLogs(foodLogsData);
       setSelectedMeal(meal);
       setModalVisible(true);
     } catch (err) {
       console.error("Network error fetching food logs:", err);
-      setFoodLogs([]);
+      const emptyData = [];
+      foodLogsCache.current.set(cacheKey, emptyData);
+      setFoodLogs(emptyData);
       setSelectedMeal(meal);
       setModalVisible(true);
     }
-  };
+  }, [userId, BACKEND_URL]);
 
-  const deleteMeal = async (mealId) => {
+  const deleteMeal = useCallback(async (mealId) => {
     Alert.alert(
       "Delete Meal",
       "Are you sure you want to delete this meal? All associated food logs will be removed.",
@@ -101,6 +177,10 @@ export default function LogNav({ userId, BACKEND_URL }) {
               const res = await fetch(`${BACKEND_URL}/meal/${mealId}`, { method: "DELETE" });
               const data = await res.json();
               if (res.ok) {
+                // Clear relevant caches
+                mealsCache.current.delete(selectedDate);
+                foodLogsCache.current.delete(mealId.toString());
+                
                 setModalVisible(false);
                 fetchMeals(selectedDate);
                 triggerMealRefresh();
@@ -115,56 +195,122 @@ export default function LogNav({ userId, BACKEND_URL }) {
         },
       ]
     );
-  };
+  }, [BACKEND_URL, fetchMeals, selectedDate, triggerMealRefresh]);
 
-  const handleGenerateRecommendation = async () => {
+  const handleGenerateRecommendation = useCallback(async () => {
     const allMeals = Object.values(groupedMeals).flat();
-    const allFoodLogs = [];
+    
+    // Use Promise.all for parallel requests with caching
+    const foodLogPromises = allMeals.map(async (meal) => {
+      const cacheKey = `${meal.id}`;
+      
+      // Check cache first
+      if (foodLogsCache.current.has(cacheKey)) {
+        return { meal_type: meal.meal_type, foods: foodLogsCache.current.get(cacheKey) };
+      }
 
-    for (const meal of allMeals) {
       try {
         const res = await fetch(`${BACKEND_URL}/log_food/?user_id=${userId}&meal_id=${meal.id}`);
         const data = await (res.ok ? res.json() : []);
         if (Array.isArray(data)) {
-          allFoodLogs.push({ meal_type: meal.meal_type, foods: data });
+          foodLogsCache.current.set(cacheKey, data);
+          return { meal_type: meal.meal_type, foods: data };
         }
       } catch (err) {
         console.error("Error fetching food logs for recommendation:", err);
       }
-    }
+      return null;
+    });
 
     setRecModalVisible(true);
     setRecLoading(true);
     setRecommendation("");
 
-    const rec = await generateRecommendation({
-      userId,
-      BACKEND_URL,
-      dailyMeals: allFoodLogs,
-    });
+    try {
+      const results = await Promise.all(foodLogPromises);
+      const allFoodLogs = results.filter(Boolean);
 
-    setRecommendation(rec);
-    setRecLoading(false);
-  };
+      const rec = await generateRecommendation({
+        userId,
+        BACKEND_URL,
+        dailyMeals: allFoodLogs,
+      });
 
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = getLocalDateString(yesterday);
+      setRecommendation(rec);
+    } catch (error) {
+      console.error("Error generating recommendation:", error);
+      setRecommendation("Sorry, we couldn't generate a recommendation at this time.");
+    } finally {
+      setRecLoading(false);
+    }
+  }, [groupedMeals, userId, BACKEND_URL]);
 
-  const formatDateTitle = (dateStr) => {
-    if (dateStr === todayStr) return "Meals Today";
-    if (dateStr === yesterdayStr) return "Meals Yesterday";
-    return `Meals on ${new Date(dateStr).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    })}`;
-  };
+  // Event handlers
+  const handleDateSelect = useCallback((date) => {
+    const newDate = date.format("YYYY-MM-DD");
+    setSelectedDate(newDate);
+    
+    // Only fetch if not in cache
+    if (!mealsCache.current.has(newDate)) {
+      fetchMeals(newDate);
+    } else {
+      setGroupedMeals(mealsCache.current.get(newDate));
+    }
+  }, [fetchMeals]);
 
-  const sortedMealTypes = [
-    ...MEAL_ORDER.filter((type) => groupedMeals[type]),
-    ...Object.keys(groupedMeals).filter((type) => !MEAL_ORDER.includes(type)),
-  ];
+  const handleCloseModal = useCallback(() => {
+    setModalVisible(false);
+  }, []);
+
+  const handleCloseRecModal = useCallback(() => {
+    setRecModalVisible(false);
+  }, []);
+
+  const handleMealPress = useCallback((meal) => {
+    fetchFoodLogs(meal);
+  }, [fetchFoodLogs]);
+
+  // Render functions
+  const renderFoodItem = useCallback(({ item }) => (
+    <View style={styles.foodItem}>
+      <Text style={styles.foodName}>{item.food_name}</Text>
+      <Text style={styles.foodMacros}>
+        Calories: {item.calories.toFixed(1)} kcal{'\n'}
+        Protein: {item.protein.toFixed(1)} g{'\n'}
+        Carbs: {item.carbs.toFixed(1)} g{'\n'}
+        Fat: {item.fat.toFixed(1)} g
+      </Text>
+    </View>
+  ), []);
+
+  const renderMealCard = useCallback((meal, idx) => (
+    <TouchableOpacity
+      key={meal.id}
+      style={styles.mealCard}
+      onPress={() => handleMealPress(meal)}
+      activeOpacity={0.8}
+    >
+      <View style={styles.mealHeader}>
+        <Text style={styles.mealName}>
+          {meal.name || `Meal ${idx + 1}`}
+        </Text>
+        <Text style={styles.mealCalories}>
+          {meal.total_calories.toFixed(1)} kcal
+        </Text>
+      </View>
+      <View style={styles.macrosRow}>
+        <Text style={styles.macroText}>
+          Protein: {meal.total_protein.toFixed(1)} g
+        </Text>
+        <Text style={styles.macroText}>
+          Carbs: {meal.total_carbs.toFixed(1)} g
+        </Text>
+        <Text style={styles.macroText}>
+          Fats: {meal.total_fat.toFixed(1)} g
+        </Text>
+      </View>
+    </TouchableOpacity>
+  ), [handleMealPress]);
 
   return (
     <ScrollView
@@ -175,22 +321,16 @@ export default function LogNav({ userId, BACKEND_URL }) {
 
       <CalendarStrip
         scrollable
-        style={{
-          height: 100,
-          minHeight: 100,
-          paddingTop: 10,
-          paddingBottom: 10,
-          marginBottom: 20,
-        }}
+        style={styles.calendarStrip}
         calendarColor="#27ae60"
-        calendarHeaderStyle={{ color: "#ffffff", fontSize: 18, fontWeight: "600" }}
-        dateNumberStyle={{ color: "#d4f1d4", fontSize: 16 }}
-        dateNameStyle={{ color: "#d4f1d4", fontSize: 12 }}
+        calendarHeaderStyle={styles.calendarHeader}
+        dateNumberStyle={styles.dateNumber}
+        dateNameStyle={styles.dateName}
         selectedDate={moment(selectedDate)}
         showMonth={false}
-        highlightDateNumberStyle={{ color: "#ffffff", fontSize: 18, fontWeight: "bold" }}
-        highlightDateNameStyle={{ color: "#ffffff", fontSize: 12, fontWeight: "600" }}
-        onDateSelected={(date) => setSelectedDate(date.format("YYYY-MM-DD"))}
+        highlightDateNumberStyle={styles.highlightDateNumber}
+        highlightDateNameStyle={styles.highlightDateName}
+        onDateSelected={handleDateSelect}
         useIsoWeek={false}
         iconContainer={{ flex: 0.1 }}
         customDatesStyles={[]}
@@ -199,10 +339,10 @@ export default function LogNav({ userId, BACKEND_URL }) {
       <Text style={styles.select}>{formatDateTitle(selectedDate)}</Text>
 
       {loadingMeals ? (
-        <View style={{ marginTop: 30, alignItems: "center" }}>
+        <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#1e7d32" />
         </View>
-      ) : sortedMealTypes.length === 0 ? (
+      ) : !hasMeals ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No meals recorded for this day.</Text>
         </View>
@@ -211,51 +351,13 @@ export default function LogNav({ userId, BACKEND_URL }) {
           {sortedMealTypes.map((mealType) => (
             <View key={mealType} style={{ marginBottom: 20 }}>
               <Text style={styles.timeHeader}>{mealType}</Text>
-              {groupedMeals[mealType].map((meal, idx) => (
-                <TouchableOpacity
-                  key={meal.id}
-                  style={{
-                    backgroundColor: "#eaf6ea",
-                    borderRadius: 16,
-                    padding: 15,
-                    marginBottom: 12,
-                    shadowColor: "#000",
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 6,
-                    elevation: 3,
-                  }}
-                  onPress={() => fetchFoodLogs(meal)}
-                  activeOpacity={0.8}
-                >
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-                    <Text style={{ fontSize: 16, fontWeight: "700", color: "#27ae60" }}>
-                      {meal.name || `Meal ${idx + 1}`}
-                    </Text>
-                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#2c3e50" }}>
-                      {meal.total_calories.toFixed(1)} kcal
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontSize: 12, color: "#34495e", fontWeight: "500" }}>
-                      Protein: {meal.total_protein.toFixed(1)} g
-                    </Text>
-                    <Text style={{ fontSize: 12, color: "#34495e", fontWeight: "500" }}>
-                      Carbs: {meal.total_carbs.toFixed(1)} g
-                    </Text>
-                    <Text style={{ fontSize: 12, color: "#34495e", fontWeight: "500" }}>
-                      Fats: {meal.total_fat.toFixed(1)} g
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+              {groupedMeals[mealType].map((meal, idx) => renderMealCard(meal, idx))}
             </View>
           ))}
 
-          {/* Generate Recommendation for the whole day (only for today) */}
-          {selectedDate === todayStr && sortedMealTypes.length > 0 && (
+          {isToday && hasMeals && (
             <Pressable
-              style={[styles.closeButton, { backgroundColor: "#27ae60", marginTop: 10 }]}
+              style={[styles.closeButton, { marginTop: 10 }]}
               onPress={handleGenerateRecommendation}
             >
               <Text style={styles.closeText}>View Recommendation</Text>
@@ -266,10 +368,9 @@ export default function LogNav({ userId, BACKEND_URL }) {
 
       {/* Food Logs Modal */}
       <Modal
-        animationType="slide"
         transparent={true}
         visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={handleCloseModal}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -278,26 +379,16 @@ export default function LogNav({ userId, BACKEND_URL }) {
             <FlatList
               data={foodLogs}
               keyExtractor={(item) => item.id.toString()}
-              renderItem={({ item }) => (
-                <View style={styles.foodItem}>
-                  <Text style={styles.foodName}>{item.food_name}</Text>
-                  <Text style={styles.foodMacros}>
-                    Calories: {item.calories.toFixed(1)} kcal{'\n'}
-                    Protein: {item.protein.toFixed(1)} g{'\n'}
-                    Carbs: {item.carbs.toFixed(1)} g{'\n'}
-                    Fat: {item.fat.toFixed(1)} g
-                  </Text>
-                </View>
-              )}
+              renderItem={renderFoodItem}
             />
 
-            <Pressable style={styles.closeButton} onPress={() => setModalVisible(false)}>
+            <Pressable style={styles.closeButton} onPress={handleCloseModal}>
               <Text style={styles.closeText}>Close</Text>
             </Pressable>
 
             <Pressable
-              style={[styles.closeButton, { backgroundColor: "#c0392b", marginTop: 10 }]}
-              onPress={() => deleteMeal(selectedMeal.id)}
+              style={[styles.closeButton, styles.deleteButton, { marginTop: 10 }]}
+              onPress={() => deleteMeal(selectedMeal?.id)}
             >
               <Text style={styles.closeText}>Delete Meal</Text>
             </Pressable>
@@ -310,35 +401,24 @@ export default function LogNav({ userId, BACKEND_URL }) {
         animationType="slide"
         transparent={true}
         visible={recModalVisible}
-        onRequestClose={() => setRecModalVisible(false)}
+        onRequestClose={handleCloseRecModal}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-             <Pressable
-              style={{
-                position: "absolute",
-                top: 15,
-                right: 15,
-                zIndex: 10,
-                backgroundColor: "#f2f2f2",
-                borderRadius: 25,
-                width: 36,
-                height: 36,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-              onPress={() => setRecModalVisible(false)}
+            <Pressable
+              style={styles.closeIcon}
+              onPress={handleCloseRecModal}
             >
-              <Text style={{ fontSize: 22, fontWeight: "bold", color: "#c0392b" }}>×</Text>
+              <Text style={styles.closeIconText}>×</Text>
             </Pressable>
 
             {recLoading ? (
-              <View style={{ marginTop: 50, alignItems: "center" }}>
+              <View style={styles.recLoadingContainer}>
                 <ActivityIndicator size="large" color="#27ae60" />
-                <Text style={{ marginTop: 10, fontSize: 16 }}>Recommending...</Text>
+                <Text style={styles.loadingText}>Recommending...</Text>
               </View>
             ) : (
-              <ScrollView style={{ marginTop: 40, maxHeight: "80%" }}>
+              <ScrollView style={styles.recommendationScroll}>
                 <Markdown style={markdownStyles}>{recommendation}</Markdown>
               </ScrollView>
             )}
@@ -348,11 +428,3 @@ export default function LogNav({ userId, BACKEND_URL }) {
     </ScrollView>
   );
 }
-
-const markdownStyles = {
-  body: { fontSize: 14, color: "#333", lineHeight: 20 },
-  heading1: { fontSize: 18, fontWeight: "bold", color: "#27ae60" },
-  heading2: { fontSize: 16, fontWeight: "bold", color: "#27ae60" },
-  strong: { fontWeight: "bold", color: "#d35400" },
-  list_item: { marginBottom: 3 },
-};
