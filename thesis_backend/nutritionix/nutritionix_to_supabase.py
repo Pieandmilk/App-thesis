@@ -79,8 +79,9 @@ def send_data_to_supabase(food_df):
 if __name__ == "__main__":
     food_list = [
         "Whole Chicken", "Chicken Breast", "Chicken Wings", "Chicken Leg", "Chicken Thigh",
-        "Egg", "Tofu", "Lean Pork", "Lean Beef", "Sweet Potato",
-        "Potatoes", "Rice", "Whole Wheat Bread", "White Bread", "Broccoli"
+        "Egg", "Tofu", "Pork", "Lean Beef", "Sweet Potato",
+        "Potatoes", "Rice", "Whole Wheat Bread", "White Bread", "Scrambled Egg",
+        "Fried Egg", "Chicken", "Tilapia", "Broccoli", "Boiled Egg", "Banana", "Ground Beef"
     ]
     
     food_df = get_food_data(food_list)
