@@ -95,7 +95,7 @@ Format using Markdown:
 `;
 
       const response = await axios.post(
-        "https://oversteadily-unengendered-bonny.ngrok-free.dev/v1/chat/completions",
+        "http://192.168.1.15:1234/v1/chat/completions",
         {
             model: "local-model",
             messages: [{ role: "user", content: prompt }],

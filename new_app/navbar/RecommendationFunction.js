@@ -85,12 +85,12 @@ Keep it supportive, simple, and actionable, as if you were coaching the user per
 
     // 5. Call AI API
     const response = await axios.post(
-      "https://oversteadily-unengendered-bonny.ngrok-free.dev/v1/chat/completions",
+      "http://192.168.1.15:1234/v1/chat/completions",
       {
         model: "local-model",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        max_tokens: 400,
+        max_tokens: 700,
       },
       {
         headers: { "ngrok-skip-browser-warning": "true" },
