@@ -36,7 +36,6 @@ async def load_model():
     global model
     try:
         model = YOLO(model_path)
-        print("YOLO model loaded successfully.")
     except Exception as e:
         print("Failed to load YOLO model:", e)
         model = None
