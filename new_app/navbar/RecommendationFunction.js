@@ -1,38 +1,64 @@
+// generateRecommendation.js - FIXED VERSION
 import axios from "axios";
 import { Alert } from "react-native";
 
-// Constants
-const AI_API_URL = "https://oversteadily-unengendered-bonny.ngrok-free.dev/v1/chat/completions";
-const AI_CONFIG = {
-  model: "local-model",
-  temperature: 0.7,
-  max_tokens: 400,
-};
-const API_HEADERS = { "ngrok-skip-browser-warning": "true" };
-const API_TIMEOUT = 120000;
+export const generateRecommendation = async ({ userId, dailyMeals = [], BACKEND_URL }) => {
+  try {
+    // -------------------------
+    // 1. VALIDATION
+    // -------------------------
+    if (!dailyMeals || dailyMeals.length === 0) {
+      Alert.alert("Info", "No meals logged for today. Please log a meal first.");
+      return "";
+    }
 
-// Utility Functions
-const buildFoodListText = (dailyMeals) => {
-  if (!dailyMeals || dailyMeals.length === 0) return "";
+    // -------------------------
+    // 2. FETCH USER PROFILE
+    // -------------------------
+    console.log("Fetching user profile for:", userId);
+    const res = await fetch(`${BACKEND_URL}/profile/${userId}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
 
-  let foodCounter = 1;
-  return dailyMeals
-    .flatMap((meal) =>
-      (meal.foods || []).map((food) => {
-        const quantityText = food.quantity ? ` (${food.quantity}x)` : "";
-        return `${foodCounter++}. ${food.food_name}${quantityText} - ${meal.meal_type || "Meal"}`;
-      })
-    )
-    .join("\n");
-};
+    if (!res.ok) {
+      throw new Error(`Failed to fetch user profile. Status: ${res.status}`);
+    }
 
-const hasEatenAllMainMeals = (dailyMeals) => {
-  const mainMeals = ["breakfast", "lunch", "dinner"];
-  const loggedMealTypes = dailyMeals.map(meal => meal.meal_type?.toLowerCase() || "");
-  return mainMeals.every(meal => loggedMealTypes.includes(meal));
-};
+    const userProfile = await res.json();
+    if (!userProfile) throw new Error("User profile not found.");
 
-const buildUserStatsPrompt = (userProfile) => `
+    console.log("User profile fetched:", userProfile);
+
+    // -------------------------
+    // 3. BUILD FOOD LIST
+    // -------------------------
+    let counter = 1;
+    const foodListText = dailyMeals
+      .flatMap((meal) =>
+        (meal.foods || []).map((food) => {
+          const qtyText = food.quantity ? ` (${food.quantity}x)` : "";
+          return `${counter++}. ${food.food_name}${qtyText} - ${meal.meal_type}`;
+        })
+      )
+      .join("\n");
+
+    const foodsTextFinal = foodListText || "";
+
+    // -------------------------
+    // 4. CHECK IF USER ATE 3 MAIN MEALS
+    // -------------------------
+    const mealsLogged = dailyMeals.map((m) => (m.meal_type || "").toLowerCase());
+    const mainMeals = ["breakfast", "lunch", "dinner"];
+    const userAteAllMeals = mainMeals.every((meal) => mealsLogged.includes(meal));
+
+    // -------------------------
+    // 5. BUILD PROMPT
+    // -------------------------
+    let prompt = `
+You are a professional and friendly sports nutritionist.
+Your job is to recommend meals/snacks based on the user's stats.
+
 ### User Stats:
 - Age: ${userProfile.age}
 - Sex: ${userProfile.sex}
@@ -44,106 +70,67 @@ const buildUserStatsPrompt = (userProfile) => `
 - Macronutrient Targets: Protein ${userProfile.protein}g, Carbs ${userProfile.carbs}g, Fat ${userProfile.fat}g
 `;
 
-const buildPromptForNoMeals = (userStats) => `
-${userStats}
-The user has not logged any meals today. 
-Ask them politely to log at least one meal (breakfast, lunch, dinner, or snack) before giving a recommendation.
+    if (!foodsTextFinal) {
+      prompt += `
+The user has not logged any meals today.
+Tell them politely to log at least one meal before you give recommendations.
 `;
-
-const buildPromptForAllMeals = (userStats) => `
-${userStats}
-The user has eaten all their meals for today. 
-Do not recommend anything for today. 
-Instead, provide a friendly summary and give guidance or tips for tomorrow's meals based on the user's stats.
+    } else if (userAteAllMeals) {
+      prompt += `
+The user has eaten all main meals today.
+Do NOT recommend more food. Provide a summary and simple guidance for tomorrow.
 `;
-
-const buildPromptForPartialMeals = (userStats, foodListText) => `
-${userStats}
+    } else {
+      prompt += `
 The user has already eaten the following foods today:
-${foodListText}
+${foodsTextFinal}
 
 Recommend **only new meals or snacks** for the rest of the day, based on the user's stats and remaining calorie/macronutrient needs. 
 Do **not** suggest any foods the user has already eaten.
 
-**Start your response exactly like this:**
+Start your response EXACTLY like this:
 You ate today: 
 ${foodListText}
 
-Hi, here are the food recommendations that match what you’ve eaten today:
+Hi heres the food recommendation for today:
 
-After listing the new foods, write a short, friendly description of each item (e.g., "the quinoa provides protein and fiber…"). 
-End with a sentence starting with "Dont forget" that gives practical, positive tips for the rest of the day's meals. 
-Keep it supportive, simple, and actionable, as if you were coaching the user personally.
+After listing foods, explain briefly why each one helps.
+End with: "Dont forget ... (give helpful advice)"
 `;
-
-// Main Function
-export const generateRecommendation = async ({ userId, dailyMeals = [], BACKEND_URL }) => {
-  try {
-    // Early validation
-    if (!dailyMeals || dailyMeals.length === 0) {
-      Alert.alert("Info", "No meals logged for today. Please log a meal first.");
-      return "";
     }
 
-    // Fetch user profile
-    const profileResponse = await fetch(`${BACKEND_URL}/profile/${userId}`);
-    if (!profileResponse.ok) throw new Error("Failed to fetch user profile");
-    
-    const userProfile = await profileResponse.json();
-    if (!userProfile) throw new Error("User profile not found");
+    console.log("Generated Prompt length:", prompt.length);
+    console.log("Sending request to backend...");
 
-    // Build food list and determine meal status
-    const foodListText = buildFoodListText(dailyMeals);
-    const userAteAllMeals = hasEatenAllMainMeals(dailyMeals);
-    const userStats = buildUserStatsPrompt(userProfile);
-
-    // Build appropriate prompt
-    let prompt = `You are a professional and friendly sports nutritionist.
-Your task is to give clear, actionable, and encouraging advice to help the user balance the rest of their meals today. 
-Your recommendations must always consider the user's stats (age, weight, height, goal, calories, and macros). 
-Your tone should be supportive, positive, and simple.
-`;
-
-    if (!foodListText) {
-      prompt += buildPromptForNoMeals(userStats);
-    } else if (userAteAllMeals) {
-      prompt += buildPromptForAllMeals(userStats);
-    } else {
-      prompt += buildPromptForPartialMeals(userStats, foodListText);
-    }
-
-    console.log("AI Prompt:", prompt);
-
-
-    // 1. Call your FastAPI Backend, not LM Studio directly
-      const response = await axios.post(
-      `${BACKEND_URL}/predict/recommendation`, // <--- The correct endpoint defined in recommendation.py
+    // ---------------
+    // 6. CALL AI API
+    // ---------------
+    const response = await axios.post(
+      `${BACKEND_URL}/predict/recommendation`,
       {
-        user_id: userId,  // <--- Matches "user_id" in RecommendationRequest class
-        prompt: prompt    // <--- Matches "prompt" in RecommendationRequest class
+        user_id: userId,
+        prompt: prompt,
       },
       {
-        timeout: 120000 // Keep the timeout long for AI generation
+        timeout: 120000
       }
     );
 
-    // The backend returns the text in the "recommendation" field
-    const content = response.data.recommendation;
+    console.log("Backend response received:", response.status);
+    
+    const output = response.data?.recommendation || "No recommendation generated";
+    console.log("Recommendation generated successfully");
 
-    return response.data?.choices?.[0]?.message?.content || "No recommendation generated";
+    return output;
 
   } catch (error) {
-    console.error("Recommendation error:", error);
+    console.log("Recommendation Error Details:");
+    console.log("Error message:", error.message);
+    console.log("Error response data:", error.response?.data);
+    console.log("Error response status:", error.response?.status);
+    console.log("Error code:", error.code);
     
-    // More specific error messages
-    if (error.code === 'ECONNABORTED') {
-      Alert.alert("Error", "Request timed out. Please try again.");
-    } else if (error.response) {
-      Alert.alert("Error", "AI service is currently unavailable.");
-    } else {
-      Alert.alert("Error", "Failed to generate recommendation. Please check your connection.");
-    }
-    
+    Alert.alert("Error", "Failed to generate recommendation. Please try again.");
     return "";
   }
 };
