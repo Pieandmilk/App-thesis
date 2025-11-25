@@ -16,7 +16,7 @@ export function calculateBMR(weight, height, age, sex) {
   }
 }
 
-export function calculateTDEE(bmr, sportCategory, age, isPro = false) {
+export function calculateTDEE(bmr, sportCategory, isPro = false) {
   let pal = categoryPAL[sportCategory] || 1.5;
   if (isPro) pal *= eliteMultiplier;
   return bmr * pal;
