@@ -23,8 +23,6 @@ app.add_middleware(
 )
 
 app.include_router(predict_router)
-
-app.include_router(predict_router)
 app.include_router(account_router)
 app.include_router(account_profile_router)
 app.include_router(meal_router)
