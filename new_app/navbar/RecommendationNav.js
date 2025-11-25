@@ -94,19 +94,19 @@ Format using Markdown:
 - Use bullet points for macros.
 `;
 
-      const response = await axios.post(
-        "http://192.168.1.15:1234/v1/chat/completions",
-        {
-            model: "local-model",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.7,
-            max_tokens: 1200, // Increased for detailed sports mode
-        },
-        {
-             headers: { "ngrok-skip-browser-warning": "true" },
-             timeout: 120000 
-        }
-      );
+          // This sends the simple data your Python backend expects
+    const response = await axios.post(
+      `${BACKEND_URL}/predict/recommendation`, // <--- The correct endpoint defined in recommendation.py
+      {
+        user_id: userId,  // <--- Matches "user_id" in RecommendationRequest class
+        prompt: prompt    // <--- Matches "prompt" in RecommendationRequest class
+      },
+      {
+        timeout: 120000 // Keep the timeout long for AI generation
+      }
+    );
+
+    
 
       const content = response.data.choices[0].message.content;
       setRecommendation(content || "No recommendation generated");

@@ -14,11 +14,10 @@ async def get_recommendation(request: RecommendationRequest):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                # 1. YOUR NGROK URL + THE ENDPOINT
-                "http://192.168.1.15:1234/v1/chat/completions",
+            
+                "http://127.0.0.1:1234/v1/chat/completions",
                 
-                # 2. THIS HEADER IS REQUIRED FOR FREE NGROK ACCOUNTS
-                # It prevents Ngrok from returning an HTML warning page instead of JSON
+            
                 headers={"ngrok-skip-browser-warning": "true"},
                 
                 json={

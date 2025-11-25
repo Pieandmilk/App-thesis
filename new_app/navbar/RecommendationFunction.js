@@ -83,20 +83,22 @@ Keep it supportive, simple, and actionable, as if you were coaching the user per
 
     console.log("AI Prompt:", prompt);
 
-    // 5. Call AI API
+
+    // 1. Call your FastAPI Backend, not LM Studio directly
     const response = await axios.post(
-      "http://192.168.1.15:1234/v1/chat/completions",
+      `${BACKEND_URL}/predict/recommendation`, 
       {
-        model: "local-model",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 700,
+        user_id: userId, // Backend expects 'user_id'
+        prompt: prompt   // Backend expects 'prompt'
       },
       {
-        headers: { "ngrok-skip-browser-warning": "true" },
-        timeout: 120000,
+        // Your backend handles the timeout and ngrok headers for LM Studio
+        timeout: 120000 
       }
     );
+
+    // 2. The backend returns { "recommendation": "..." }
+    const content = response.data.recommendation;
 
     return response.data?.choices?.[0]?.message?.content || "No recommendation generated";
   } catch (error) {
