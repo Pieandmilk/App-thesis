@@ -23,14 +23,34 @@ export function calculateTDEE(bmr, sportCategory, age, isPro = false) {
 }
 
 export function adjustCaloriesForGoal(tdee, goal) {
-  if (goal === "weight_loss") return tdee - 300;
-  if (goal === "muscle_gain") return tdee + 300;
+  if (goal === "weight_loss") return tdee - 300; // ISSN
+  if (goal === "muscle_gain") return tdee + 300; // ISSN
   return tdee;
 }
 
-export function calculateMacros(weight, calories) {
-  const carbs = weight * 5;
-  const protein = weight * 1.8;  
-  const fat = (calories * 0.25) / 9; 
+export function calculateMacros(weight, calories, goal) {
+  let proteinPerKg, carbsPerKg, fatPercent;
+
+  if (goal === "muscle_gain") {
+    proteinPerKg = 2;      // ISSN midrange  
+    carbsPerKg = 5.5;        // ISSN midrange
+    fatPercent = 0.25;       // 25% of calories
+  }
+  else if (goal === "weight_loss") {
+    proteinPerKg = 2.4;      // ISSN recommended high protein
+    carbsPerKg = 3.5;        // ISSN midrange for cutting
+    fatPercent = 0.25;       // 25% of calories
+  }
+  else { // maintenance
+    proteinPerKg = 1.8;      
+    carbsPerKg = 5;        
+    fatPercent = 0.30;       
+  }
+
+  const protein = proteinPerKg * weight;
+  const carbs = carbsPerKg * weight;
+  const fat = (calories * fatPercent) / 9;
+
   return { carbs, protein, fat };
 }
+
