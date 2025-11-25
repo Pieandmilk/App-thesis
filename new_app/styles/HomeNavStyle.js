@@ -73,4 +73,29 @@ export default StyleSheet.create({
     textAlign: "center",
     color: "#777",
   },
+  progressBarContainer: {
+    width: "100%",
+    height: 14,
+    backgroundColor: "#E0E0E0",
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  progressBarFill: {
+    height: "100%",
+  },
+  chart: {
+    marginHorizontal: 10,
+    borderRadius: 16,
+    marginLeft: -5,
+  },
+  cancelButton: {
+    color: "red", 
+    textAlign: "center", 
+    padding: 8 
+  },
+  progressPercent: {
+    fontSize: 12,
+    color: '#868686ff',
+    fontWeight: '500',
+  }
 });
