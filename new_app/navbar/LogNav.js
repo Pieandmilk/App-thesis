@@ -197,29 +197,55 @@ export default function LogNav({ userId, BACKEND_URL }) {
     );
   }, [BACKEND_URL, fetchMeals, selectedDate, triggerMealRefresh]);
 
+  // FIXED: handleGenerateRecommendation function
   const handleGenerateRecommendation = useCallback(async () => {
-    const allMeals = Object.values(groupedMeals).flat();
+    console.log("Starting recommendation generation...");
     
+    const allMeals = Object.values(groupedMeals).flat();
+    console.log("Total meals found:", allMeals.length);
+
+    if (allMeals.length === 0) {
+      Alert.alert("Info", "No meals found for today. Please log some meals first.");
+      return;
+    }
+
     // Use Promise.all for parallel requests with caching
     const foodLogPromises = allMeals.map(async (meal) => {
       const cacheKey = `${meal.id}`;
       
       // Check cache first
       if (foodLogsCache.current.has(cacheKey)) {
-        return { meal_type: meal.meal_type, foods: foodLogsCache.current.get(cacheKey) };
+        const cachedFoods = foodLogsCache.current.get(cacheKey);
+        console.log(`Using cached foods for meal ${meal.id}:`, cachedFoods.length);
+        return { 
+          meal_type: meal.meal_type, 
+          foods: cachedFoods 
+        };
       }
 
       try {
+        console.log(`Fetching food logs for meal ${meal.id}...`);
         const res = await fetch(`${BACKEND_URL}/log_food/?user_id=${userId}&meal_id=${meal.id}`);
-        const data = await (res.ok ? res.json() : []);
-        if (Array.isArray(data)) {
-          foodLogsCache.current.set(cacheKey, data);
-          return { meal_type: meal.meal_type, foods: data };
+        
+        if (!res.ok) {
+          console.log(`Failed to fetch food logs for meal ${meal.id}, status: ${res.status}`);
+          return null;
         }
+        
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          console.log(`Fetched ${data.length} foods for meal ${meal.id}`);
+          foodLogsCache.current.set(cacheKey, data);
+          return { 
+            meal_type: meal.meal_type, 
+            foods: data 
+          };
+        }
+        return null;
       } catch (err) {
-        console.error("Error fetching food logs for recommendation:", err);
+        console.error(`Error fetching food logs for meal ${meal.id}:`, err);
+        return null;
       }
-      return null;
     });
 
     setRecModalVisible(true);
@@ -227,19 +253,36 @@ export default function LogNav({ userId, BACKEND_URL }) {
     setRecommendation("");
 
     try {
+      console.log("Waiting for all food logs to be fetched...");
       const results = await Promise.all(foodLogPromises);
       const allFoodLogs = results.filter(Boolean);
+      
+      console.log("Successfully fetched food logs for meals:", allFoodLogs.length);
+      console.log("Food logs data structure:", JSON.stringify(allFoodLogs, null, 2));
 
-      const rec = await generateRecommendation({
+      if (allFoodLogs.length === 0) {
+        setRecommendation("No food logs found for the meals. Please add foods to your meals first.");
+        return;
+      }
+
+      console.log("Calling generateRecommendation with:", {
         userId,
         BACKEND_URL,
+        dailyMeals: allFoodLogs
+      });
+
+      const rec = await generateRecommendation({
+        userId: userId,
+        BACKEND_URL: BACKEND_URL,
         dailyMeals: allFoodLogs,
       });
 
-      setRecommendation(rec);
+      console.log("Recommendation received:", rec ? "Yes" : "No");
+      setRecommendation(rec || "No recommendation could be generated.");
+      
     } catch (error) {
-      console.error("Error generating recommendation:", error);
-      setRecommendation("Sorry, we couldn't generate a recommendation at this time.");
+      console.error("Error in recommendation process:", error);
+      setRecommendation("Sorry, we couldn't generate a recommendation at this time. Please try again.");
     } finally {
       setRecLoading(false);
     }
@@ -415,7 +458,7 @@ export default function LogNav({ userId, BACKEND_URL }) {
             {recLoading ? (
               <View style={styles.recLoadingContainer}>
                 <ActivityIndicator size="large" color="#27ae60" />
-                <Text style={styles.loadingText}>Recommending...</Text>
+                <Text style={styles.loadingText}>Generating Recommendation...</Text>
               </View>
             ) : (
               <ScrollView style={styles.recommendationScroll}>
