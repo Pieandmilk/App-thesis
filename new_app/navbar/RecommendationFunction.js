@@ -116,19 +116,18 @@ Your tone should be supportive, positive, and simple.
 
 
     // 1. Call your FastAPI Backend, not LM Studio directly
-    const response = await axios.post(
-      `${BACKEND_URL}/predict/recommendation`, 
+      const response = await axios.post(
+      `${BACKEND_URL}/predict/recommendation`, // <--- The correct endpoint defined in recommendation.py
       {
-        user_id: userId, // Backend expects 'user_id'
-        prompt: prompt   // Backend expects 'prompt'
+        user_id: userId,  // <--- Matches "user_id" in RecommendationRequest class
+        prompt: prompt    // <--- Matches "prompt" in RecommendationRequest class
       },
       {
-        // Your backend handles the timeout and ngrok headers for LM Studio
-        timeout: 120000 
+        timeout: 120000 // Keep the timeout long for AI generation
       }
     );
 
-    // 2. The backend returns { "recommendation": "..." }
+    // The backend returns the text in the "recommendation" field
     const content = response.data.recommendation;
 
     return response.data?.choices?.[0]?.message?.content || "No recommendation generated";

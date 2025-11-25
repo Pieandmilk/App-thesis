@@ -253,8 +253,8 @@ Format using Markdown:
 - Use **bold** for food names.
 - Use bullet points for macros.`;
 
-          // This sends the simple data your Python backend expects
-    const response = await axios.post(
+        // This sends the simple data your Python backend expects
+      const response = await axios.post(
       `${BACKEND_URL}/predict/recommendation`, // <--- The correct endpoint defined in recommendation.py
       {
         user_id: userId,  // <--- Matches "user_id" in RecommendationRequest class
@@ -265,9 +265,8 @@ Format using Markdown:
       }
     );
 
-    
-
-      const content = response.data.choices[0].message.content;
+    // The backend returns the text in the "recommendation" field
+    const content = response.data.recommendation;
       setRecommendation(content || "No recommendation generated");
     } catch (error) {
       console.error("Error generating recommendation:", error);
