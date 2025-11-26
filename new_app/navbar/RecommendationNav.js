@@ -236,6 +236,9 @@ export default function RecommendationNav({ userId, BACKEND_URL }) {
 - Focus on balanced, tasty Filipino meals.`;
 
       const prompt = `You are a supportive nutritionist.
+
+ CRITICAL SAFETY RULE: ABSOLUTELY DO NOT recommend any foods that contain or may contain the user's allergens.
+      
 User Stats:
 - Age: ${userProfile.age}
 - Sex: ${userProfile.sex}
