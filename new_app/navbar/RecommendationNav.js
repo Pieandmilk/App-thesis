@@ -243,6 +243,9 @@ User Stats:
 - Weight: ${userProfile.weight}kg
 - Height: ${userProfile.height}cm
 - Goal: ${formatGoal(userProfile.goal)}
+- Allergies: ${userProfile.allergies}
+
+"Take note of the users allergies"
 
 ${modeInstruction}
 
