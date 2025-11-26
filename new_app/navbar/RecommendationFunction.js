@@ -47,66 +47,71 @@ export const generateRecommendation = async ({ userId, dailyMeals = [], BACKEND_
     // -------------------------
     // BUILD PROMPT (WITH ALLERGIES)
     // -------------------------
-    let prompt = `
-You are a professional and friendly sports nutritionist.
-Your job is to recommend meals/snacks based on the user's stats.
+  let prompt = `
+You are a professional sports nutritionist specializing in food allergy safety.
 
-### User Stats:
+CRITICAL ALLERGY INFORMATION:
+${userProfile.allergies ? 
+`🚫 USER HAS ALLERGIES TO: ${userProfile.allergies.toUpperCase()}
+- ABSOLUTELY FORBIDDEN to recommend any foods containing these allergens
+- Avoid cross-contamination risks
+- Double-check every food recommendation for safety` : 
+'✅ No known allergies'}
+
+USER PROFILE:
 - Age: ${userProfile.age}
 - Sex: ${userProfile.sex}
 - Weight: ${userProfile.weight}kg
 - Height: ${userProfile.height}cm
 - Goal: ${userProfile.goal || "Maintain Health"}
 - Professional Athlete: ${userProfile.ispro ? "Yes" : "No"}
-- Daily Calorie Needs: ${userProfile.calories} kcal
-- Macronutrient Targets: Protein ${userProfile.protein}g, Carbs ${userProfile.carbs}g, Fat ${userProfile.fat}g
-${userProfile.allergies ? `- Allergies: ${userProfile.allergies}` : "- Allergies: None"}
+- Daily Calories: ${userProfile.calories} kcal
+- Protein Target: ${userProfile.protein}g
+- Carbs Target: ${userProfile.carbs}g
+- Fat Target: ${userProfile.fat}g
 `;
 
-    if (!foodsTextFinal) {
-      prompt += `
-The user has not logged any meals today.
-Tell them politely to log at least one meal before you give recommendations.
+if (!foodsTextFinal) {
+  prompt += `
+The user hasn't logged any meals today.
+Politely ask them to log their first meal before providing recommendations.
 `;
-    } else if (userAteAllMeals) {
-      prompt += `
-The user has eaten all main meals today.
-Do NOT recommend more food. Provide a summary and simple guidance for tomorrow.
+} else if (userAteAllMeals) {
+  prompt += `
+The user has completed all main meals today.
+Provide a daily summary and helpful tips for tomorrow instead of more food recommendations.
 `;
-    } else {
-      prompt += `
-The user has already eaten the following foods today:
+} else {
+  prompt += `
+TODAY'S FOOD LOG:
 ${foodsTextFinal}
 
-IMPORTANT ALLERGY NOTE: ${userProfile.allergies ? 
-  `The user has allergies to: ${userProfile.allergies}. ABSOLUTELY DO NOT recommend any foods containing these allergens.` : 
-  'The user has no known allergies.'}
+RECOMMENDATION GUIDELINES:
+• Recommend only NEW meals/snacks (avoid repeating today's foods)
+• Base suggestions on remaining calorie/macro needs
+• MAXIMUM 4 food recommendations
+• Use ONLY bullet points (no numbering)
+• Provide VARIED options each time
+• ${userProfile.allergies ? `CRITICAL: 100% avoid ${userProfile.allergies}` : 'No allergy restrictions'}
 
-Recommend **only new meals or snacks** for the rest of the day, based on the user's stats and remaining calorie/macronutrient needs. 
-Do **not** suggest any foods the user has already eaten.
-${userProfile.allergies ? `CRITICAL: Avoid all foods containing: ${userProfile.allergies}` : ''}
+RESPONSE FORMAT - FOLLOW EXACTLY:
 
-IMPORTANT FORMATTING INSTRUCTIONS:
-- DO NOT use numbering (1., 2., 3.) in your recommendations
-- Use bullet form
-- Provide VARIED and RANDOMIZED food recommendations - don't always suggest the same foods
-- Max 4 foods to recommend
-
-You MUST start your response EXACTLY with this format:
-
-You ate today: 
+You ate today:
 ${foodListText}
 
-Food allergies: ${userProfile.allergies || 'None'}
+Your food allergies: ${userProfile.allergies || 'None'}
 
-Hi heres the food recommendation for today:
+Hi! Here's your food recommendation for today:
 
-[Your recommendations here...]
+**Your Recommendations:**
+• [Food 1] - [Brief benefit explanation]
+• [Food 2] - [Brief benefit explanation] 
+• [Food 3] - [Brief benefit explanation]
+• [Food 4] - [Brief benefit explanation]
 
-After listing foods, explain briefly why each one helps.
-End with: "Dont forget to (give helpful advice)"
+Don't forget to [specific helpful advice based on user's goals]
 `;
-    }
+}
 
     console.log("Generated Prompt length:", prompt.length);
     console.log("Sending request to backend...");
