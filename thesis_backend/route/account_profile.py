@@ -7,7 +7,6 @@ router = APIRouter(prefix="/profile", tags=["Profile"])
 @router.post("/submit/{user_id}")
 def submit_profile(user_id: int, form: UserProfileForm = Body(...)):
     try:
-        # Check if user exists
         user_resp = (
             supabase.table("users")
             .select("*")
@@ -19,7 +18,6 @@ def submit_profile(user_id: int, form: UserProfileForm = Body(...)):
         if not user_resp or not getattr(user_resp, "data", None):
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Check if profile exists
         profile_resp = (
             supabase.table("user_profile_data")
             .select("*")
@@ -41,7 +39,8 @@ def submit_profile(user_id: int, form: UserProfileForm = Body(...)):
             "calories": int(form.calories),    
             "carbs": int(form.carbs),           
             "protein": int(form.protein),        
-            "fat": int(form.fat)                 
+            "fat": int(form.fat),
+            "allergies": form.allergies
         }
 
         if profile_exists:
