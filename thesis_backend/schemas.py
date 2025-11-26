@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+from typing import List
 from datetime import datetime
 
 class UserCreate(BaseModel):
@@ -34,7 +34,8 @@ class UserProfileForm(BaseModel):
     carbs: int
     protein: int
     fat: int
-    ispro: Optional[bool] = False 
+    ispro: bool = False
+    allergies: str = ""
 
 class LogFoodItem(BaseModel):
     food_name: str
@@ -43,7 +44,7 @@ class LogFoodItem(BaseModel):
     protein: float
     carbs: float
     fat: float
-    meal_type: Optional[str] = "Meal"
+    meal_type: str = "Meal"
 
 class LogFoodRequest(BaseModel):
     user_id: int
@@ -60,7 +61,7 @@ class LogFoodResponse(BaseModel):
     protein: float
     carbs: float
     fat: float
-    meal_type: Optional[str] = None
+    meal_type: str = "Meal"
 
     class Config:
         from_attributes = True
@@ -71,8 +72,8 @@ class MealCreate(BaseModel):
     total_protein: float
     total_carbs: float
     total_fat: float
-    meal_type: Optional[str] = "Meal" 
-    created_at: Optional[datetime] = None
+    meal_type: str = "Meal"
+    created_at: datetime = None
 
 class MealResponse(BaseModel):
     id: int
@@ -81,8 +82,8 @@ class MealResponse(BaseModel):
     total_protein: float
     total_carbs: float
     total_fat: float
-    meal_type: Optional[str] = None 
-    created_at: Optional[datetime] = None
+    meal_type: str = "Meal"
+    created_at: datetime
 
     class Config:
         from_attributes = True
