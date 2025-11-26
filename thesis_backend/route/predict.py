@@ -12,6 +12,7 @@ from functools import lru_cache
 router = APIRouter(prefix="/predict", tags=["Predict"])
 model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "model/best.pt")
 
+# Caching nutrition data to avoid repeated database calls
 @lru_cache(maxsize=100)
 def get_nutrition_for_labels_cached(labels_tuple: tuple):
     """Cached version of nutrition lookup"""
@@ -35,7 +36,6 @@ async def load_model():
     global model
     try:
         model = YOLO(model_path)
-        print("YOLO model loaded successfully")
     except Exception as e:
         print("Failed to load YOLO model:", e)
         model = None
@@ -56,127 +56,119 @@ def validate_image_file(file: UploadFile):
     
     return True
 
-def process_detections(results):
-    """Process YOLO results into detection objects"""
+def filter_high_confidence_detections(results, confidence_threshold=0.5):
+    """Filter results to only include high-confidence detections"""
     detections = []
     labels = []
-    high_conf_boxes = []
     
-    print(f"🔍 Total boxes found by YOLO: {len(results[0].boxes)}")
+    # Get the first result (single image inference)
+    result = results[0]
     
-    for i, box in enumerate(results[0].boxes):
-        cls = int(box.cls)
-        label = results[0].names[cls]
-        conf = float(box.conf)
-        
-        print(f"  Detection {i}: '{label}' with confidence {conf:.3f}")
-        
-        if conf < 0.50:
-            print(f"    SKIPPING '{label}' (confidence {conf:.3f} < 0.50)")
-            continue
-            
-        print(f"    INCLUDING '{label}' (confidence {conf:.3f} ≥ 0.50)")
-        detections.append({
-            "label": label,
-            "confidence": conf,
-            "box": box.xyxy[0].tolist()
-        })
-        labels.append(label)
-        high_conf_boxes.append(box) 
+    # Filter boxes based on confidence
+    high_conf_indices = []
     
-    print(f"Final detections after filtering: {len(detections)}")
-    return detections, labels, high_conf_boxes
+    if result.boxes is not None:
+        for i, box in enumerate(result.boxes):
+            conf = float(box.conf)
+            if conf >= confidence_threshold:
+                high_conf_indices.append(i)
+                
+                cls = int(box.cls)
+                label = result.names[cls]
+                
+                detections.append({
+                    "label": label,
+                    "confidence": conf,
+                    "box": box.xyxy[0].tolist()
+                })
+                labels.append(label)
+    
+    return detections, labels, high_conf_indices
 
-def create_custom_annotated_image(original_img, high_conf_boxes, results):
-    """Create annotated image showing only high-confidence detections"""
+def create_filtered_annotation(original_img, results, high_conf_indices):
+    """Create annotated image with only high-confidence detections and LARGE text"""
+    # Start with original image
     annotated = original_img.copy()
     
+    # Colors for different classes
     colors = [
         (255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), 
         (255, 0, 255), (0, 255, 255), (128, 0, 0), (0, 128, 0)
     ]
     
-    for i, box in enumerate(high_conf_boxes):
-        # Get box coordinates
-        x1, y1, x2, y2 = box.xyxy[0].tolist()
-        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-        
-        # Get class info
-        cls = int(box.cls)
-        label = results[0].names[cls]
-        conf = float(box.conf)
-        
-        # Choose color
-        color = colors[cls % len(colors)]
-        
-        # Draw thicker bounding box
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 3)
-        
-        # Create label text
-        label_text = f"{label} {conf:.2f}"
-        
-        # Use larger font for better visibility
-        font_scale = 0.8
-        thickness = 2
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        
-        # Calculate text size
-        (text_width, text_height), baseline = cv2.getTextSize(
-            label_text, font, font_scale, thickness
-        )
-        
-        # Calculate text position - ensure it's within image bounds
-        text_x = x1
-        text_y = y1 - 10 if y1 - 10 > text_height else y1 + text_height + 10
-        
-        # Ensure text doesn't go above the image
-        if text_y < text_height:
-            text_y = y2 + text_height + 5
-        
-        # Ensure text doesn't go below the image
-        if text_y > annotated.shape[0] - 5:
-            text_y = y1 - 10
-        
-        # Draw text background with padding
-        bg_x1 = text_x - 5
-        bg_y1 = text_y - text_height - 5
-        bg_x2 = text_x + text_width + 5
-        bg_y2 = text_y + 5
-        
-        # Ensure background stays within image bounds
-        bg_x1 = max(0, bg_x1)
-        bg_y1 = max(0, bg_y1)
-        bg_x2 = min(annotated.shape[1], bg_x2)
-        bg_y2 = min(annotated.shape[0], bg_y2)
-        
-        # Draw semi-transparent background
-        overlay = annotated.copy()
-        cv2.rectangle(overlay, (bg_x1, bg_y1), (bg_x2, bg_y2), color, -1)
-        cv2.addWeighted(overlay, 0.6, annotated, 0.4, 0, annotated)
-        
-        # Draw text with border for better visibility
-        # Border first
-        cv2.putText(
-            annotated, 
-            label_text, 
-            (text_x, text_y), 
-            font, 
-            font_scale, 
-            (0, 0, 0),  # Black border
-            thickness + 1
-        )
-        # Then main text
-        cv2.putText(
-            annotated, 
-            label_text, 
-            (text_x, text_y), 
-            font, 
-            font_scale, 
-            (255, 255, 255),  # White text
-            thickness
-        )
-        
-        print(f"Drawing: '{label_text}' at ({text_x}, {text_y})")
+    result = results[0]
+    
+    if result.boxes is not None:
+        for i in high_conf_indices:
+            box = result.boxes[i]
+            
+            # Get box coordinates
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+            
+            # Get class info
+            cls = int(box.cls)
+            label = result.names[cls]
+            conf = float(box.conf)
+            
+            # Choose color
+            color = colors[cls % len(colors)]
+            
+            # Draw thicker bounding box
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 4)
+            
+            # Create label text
+            label_text = f"{label} {conf:.2f}"
+            
+            # Use LARGER font scale and thickness
+            font_scale = 1.2  
+            thickness = 3    
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            
+            # Calculate text size with larger font
+            (text_width, text_height), baseline = cv2.getTextSize(
+                label_text, font, font_scale, thickness
+            )
+            
+            text_bg_y1 = max(y1 - text_height - 15, 0)  # More padding
+            text_bg_y2 = y1
+            text_y = max(y1 - 10, text_height + 5)
+            
+            if text_y > annotated.shape[0] - 10:
+                text_y = y1 - 10
+            
+            # Draw larger text background with more padding
+            cv2.rectangle(
+                annotated, 
+                (x1 - 5, text_bg_y1), 
+                (x1 + text_width + 10, text_bg_y2), 
+                color, 
+                -1  # Filled rectangle
+            )
+            
+            # Draw text with border for maximum visibility
+            # First draw black border (thicker)
+            cv2.putText(
+                annotated, 
+                label_text, 
+                (x1 + 2, text_y), 
+                font, 
+                font_scale, 
+                (0, 0, 0),  # Black border
+                thickness + 2  # Thicker border
+            )
+            # Then draw white text
+            cv2.putText(
+                annotated, 
+                label_text, 
+                (x1 + 2, text_y), 
+                font, 
+                font_scale, 
+                (255, 255, 255),  # White text
+                thickness
+            )
+            
+            print(f"📝 Drawing LARGE label: '{label_text}'")
     
     return annotated
 
@@ -203,13 +195,12 @@ async def predict_food(file: UploadFile = File(...)):
         if img is None:
             raise HTTPException(status_code=400, detail="Invalid image file")
         
-        print(f"📸 Image loaded: {img.shape[1]}x{img.shape[0]}")
-        
+        # Run inference (using async to avoid blocking)
         loop = asyncio.get_event_loop()
         results = await loop.run_in_executor(None, model, img)
         
-        # Process detections and get high-confidence boxes for annotation
-        detections, labels, high_conf_boxes = process_detections(results)
+        # Process detections and get high-confidence indices
+        detections, labels, high_conf_indices = filter_high_confidence_detections(results)
         
         if not detections:
             return JSONResponse(content={
@@ -225,20 +216,17 @@ async def predict_food(file: UploadFile = File(...)):
         for item in detections:
             item["nutrition"] = nutrition_map.get(item["label"], {})
         
-        # Generate custom annotated image with ONLY high-confidence detections
-        annotated = create_custom_annotated_image(img, high_conf_boxes, results)
+        # Generate annotated image with ONLY high-confidence detections and LARGE text
+        annotated = create_filtered_annotation(img, results, high_conf_indices)
         annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
         image_base64 = encode_image_to_base64(annotated_rgb)
         
-        response_data = {
+        return {
             "predictions": detections,
             "count": len(detections),
             "image": image_base64,
             "confidence_threshold_used": 0.50
         }
-        
-        print(f"Final response: {len(detections)} detections with confidence ≥ 0.50")
-        return response_data
         
     except HTTPException:
         raise
