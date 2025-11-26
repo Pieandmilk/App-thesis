@@ -1,7 +1,6 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useRef } from 'react';
 
 import HomeNav from '../navbar/HomeNav';
 import LogNav from '../navbar/LogNav';
@@ -14,12 +13,10 @@ import { useUser } from "../UserContext";
 const Tab = createBottomTabNavigator();
 
 export default function Main() {
-  const tabRef = useRef();
   const { userId, BACKEND_URL } = useUser();
 
   return (
     <Tab.Navigator
-      ref={tabRef}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: 'green',
