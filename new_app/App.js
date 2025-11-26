@@ -2,7 +2,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { UserProvider } from "./UserContext";
-import { useColorScheme, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 
 import Register from "./screens/RegisterScreen";
 import Login from "./screens/LoginScreen";
@@ -15,11 +15,9 @@ import PrivacyPolicyScreen from "./screens/PrivacyPolicyScreen";
 const Stack = createNativeStackNavigator();
 
 export default function App() {
-  const scheme = useColorScheme();
-  const backgroundColor = scheme === 'dark' ? '#000' : '#fff';
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={[styles.container, { backgroundColor }]}>
+      <SafeAreaView style={styles.container}>
         <UserProvider>
           <NavigationContainer>
             <Stack.Navigator
