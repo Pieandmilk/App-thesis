@@ -27,15 +27,6 @@ export const UserProvider = ({ children }) => {
     loadUserId();
   }, []);
 
-  const logout = async () => {
-    try {
-      await AsyncStorage.removeItem("userId");
-      setUserId(null);
-    } catch (error) {
-      console.error("Error clearing user data:", error);
-    }
-  };
-
   const triggerMealRefresh = () => {
     setMealRefreshCounter((prev) => prev + 1);
   };
@@ -50,7 +41,6 @@ export const UserProvider = ({ children }) => {
         triggerMealRefresh,
         BACKEND_URL,
         isLoadingUser,
-        logout,
       }}
     >
       {children}
