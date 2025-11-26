@@ -15,7 +15,8 @@ export default function Form({ navigation }) {
     sex: "",
     sports_category: "",
     goal: "",
-    ispro: null
+    ispro: null,
+    allergies: "",
   });
 
   const [showSexDD, setShowSexDD] = useState(false);
@@ -84,6 +85,7 @@ export default function Form({ navigation }) {
         sports_category: formData.sports_category,
         goal: formData.goal,
         ispro: formData.ispro,
+        allergies: formData.allergies,
         calories: Math.round(calories),
         carbs: Math.round(macros.carbs),
         protein: Math.round(macros.protein),
@@ -107,7 +109,6 @@ export default function Form({ navigation }) {
     }
   };
 
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -129,7 +130,7 @@ export default function Form({ navigation }) {
               value={formData.weight}
               onChangeText={(text) => setFormData(prev => ({ ...prev, weight: text }))}
               keyboardType="numeric"
-              placeholder="70" // numeric placeholder
+              placeholder="70"
             />
           </View>
           <View style={styles.inputGroup}>
@@ -139,7 +140,7 @@ export default function Form({ navigation }) {
               value={formData.height}
               onChangeText={(text) => setFormData(prev => ({ ...prev, height: text }))}
               keyboardType="numeric"
-              placeholder="175" // numeric placeholder
+              placeholder="175"
             />
           </View>
         </View>
@@ -213,6 +214,22 @@ export default function Form({ navigation }) {
               </Text>
               <Text style={styles.dropdownArrow}>▼</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Allergies */}
+        <View style={styles.fullRow}>
+          <View style={styles.inputGroup2}>
+            <Text style={styles.label}>Allergies (Optional)</Text>
+            <TextInput
+              style={styles.input}
+              value={formData.allergies}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, allergies: text }))}
+              placeholder="e.g., peanuts, shellfish, dairy"
+              multiline={true}
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
           </View>
         </View>
 
