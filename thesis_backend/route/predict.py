@@ -60,11 +60,16 @@ def process_detections(results):
     """Process YOLO results into detection objects"""
     detections = []
     labels = []
+    high_conf_boxes = []  # Store high-confidence boxes for image
     
     for box in results[0].boxes:
         cls = int(box.cls)
         label = results[0].names[cls]
         conf = float(box.conf)
+        
+        # Only include high-confidence detections
+        if conf < 0.50:
+            continue
             
         detections.append({
             "label": label,
@@ -72,8 +77,9 @@ def process_detections(results):
             "box": box.xyxy[0].tolist()
         })
         labels.append(label)
+        high_conf_boxes.append(box)  # Store the box for image generation
     
-    return detections, labels
+    return detections, labels, high_conf_boxes
 
 def encode_image_to_base64(image):
     """Encode image to base64 efficiently"""
@@ -102,14 +108,14 @@ async def predict_food(file: UploadFile = File(...)):
         loop = asyncio.get_event_loop()
         results = await loop.run_in_executor(None, model, img)
         
-        # Process detections
-        detections, labels = process_detections(results)
+        # Process detections and get high-confidence boxes
+        detections, labels, high_conf_boxes = process_detections(results)
         
         if not detections:
             return JSONResponse(content={
                 "predictions": [],
                 "count": 0,
-                "message": "No food items detected with sufficient confidence"
+                "message": "No food items detected with sufficient confidence (≥ 0.50)"
             })
         
         # Get nutrition data (cached)
@@ -119,15 +125,17 @@ async def predict_food(file: UploadFile = File(...)):
         for item in detections:
             item["nutrition"] = nutrition_map.get(item["label"], {})
         
-        # Generate annotated image
-        annotated = results[0].plot() 
+        filtered_results = results[0]
+        filtered_results.boxes = high_conf_boxes  # Replace with only high-confidence boxes
+        annotated = filtered_results.plot()  # Now image shows only ≥ 0.50 boxes
         annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
         image_base64 = encode_image_to_base64(annotated_rgb)
         
         return {
             "predictions": detections,
             "count": len(detections),
-            "image": image_base64
+            "image": image_base64,
+            "confidence_threshold_used": 0.50
         }
         
     except HTTPException:
