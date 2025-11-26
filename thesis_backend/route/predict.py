@@ -84,7 +84,7 @@ def process_detections(results):
         labels.append(label)
         high_conf_boxes.append(box) 
     
-    print(f"🎯 Final detections after filtering: {len(detections)}")
+    print(f"Final detections after filtering: {len(detections)}")
     return detections, labels, high_conf_boxes
 
 def create_custom_annotated_image(original_img, high_conf_boxes, results):
@@ -109,20 +109,74 @@ def create_custom_annotated_image(original_img, high_conf_boxes, results):
         # Choose color
         color = colors[cls % len(colors)]
         
-        # Draw bounding box
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+        # Draw thicker bounding box
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 3)
         
         # Create label text
         label_text = f"{label} {conf:.2f}"
         
-        # Calculate text background
-        (text_width, text_height), baseline = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+        # Use larger font for better visibility
+        font_scale = 0.8
+        thickness = 2
+        font = cv2.FONT_HERSHEY_SIMPLEX
         
-        # Draw text background
-        cv2.rectangle(annotated, (x1, y1 - text_height - 5), (x1 + text_width, y1), color, -1)
+        # Calculate text size
+        (text_width, text_height), baseline = cv2.getTextSize(
+            label_text, font, font_scale, thickness
+        )
         
-        # Draw text
-        cv2.putText(annotated, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        # Calculate text position - ensure it's within image bounds
+        text_x = x1
+        text_y = y1 - 10 if y1 - 10 > text_height else y1 + text_height + 10
+        
+        # Ensure text doesn't go above the image
+        if text_y < text_height:
+            text_y = y2 + text_height + 5
+        
+        # Ensure text doesn't go below the image
+        if text_y > annotated.shape[0] - 5:
+            text_y = y1 - 10
+        
+        # Draw text background with padding
+        bg_x1 = text_x - 5
+        bg_y1 = text_y - text_height - 5
+        bg_x2 = text_x + text_width + 5
+        bg_y2 = text_y + 5
+        
+        # Ensure background stays within image bounds
+        bg_x1 = max(0, bg_x1)
+        bg_y1 = max(0, bg_y1)
+        bg_x2 = min(annotated.shape[1], bg_x2)
+        bg_y2 = min(annotated.shape[0], bg_y2)
+        
+        # Draw semi-transparent background
+        overlay = annotated.copy()
+        cv2.rectangle(overlay, (bg_x1, bg_y1), (bg_x2, bg_y2), color, -1)
+        cv2.addWeighted(overlay, 0.6, annotated, 0.4, 0, annotated)
+        
+        # Draw text with border for better visibility
+        # Border first
+        cv2.putText(
+            annotated, 
+            label_text, 
+            (text_x, text_y), 
+            font, 
+            font_scale, 
+            (0, 0, 0),  # Black border
+            thickness + 1
+        )
+        # Then main text
+        cv2.putText(
+            annotated, 
+            label_text, 
+            (text_x, text_y), 
+            font, 
+            font_scale, 
+            (255, 255, 255),  # White text
+            thickness
+        )
+        
+        print(f"Drawing: '{label_text}' at ({text_x}, {text_y})")
     
     return annotated
 
