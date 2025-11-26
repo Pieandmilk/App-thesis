@@ -65,9 +65,6 @@ def process_detections(results):
         cls = int(box.cls)
         label = results[0].names[cls]
         conf = float(box.conf)
-        
-        if conf < 0.5:
-            continue
             
         detections.append({
             "label": label,
